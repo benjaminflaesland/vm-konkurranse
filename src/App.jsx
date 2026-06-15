@@ -81,11 +81,29 @@ const PALETTE = [
 
 const STORAGE_KEY = "vm2026_ranking_data_v2";
 
-function saveData(data) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
-  catch (e) { console.error("Kunne ikke lagre:", e); }
+async function saveData(data, adminPassword) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+  if (!adminPassword) return;
+  try {
+    await fetch("/.netlify/functions/data", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${adminPassword}`,
+      },
+      body: JSON.stringify(data),
+    });
+  } catch (e) { console.error("Kunne ikke lagre til server:", e); }
 }
-function loadData() {
+
+async function loadData() {
+  try {
+    const res = await fetch("/.netlify/functions/data");
+    if (res.ok) {
+      const d = await res.json();
+      if (d?.participants) return d;
+    }
+  } catch {}
   try {
     const d = localStorage.getItem(STORAGE_KEY);
     return d ? JSON.parse(d) : null;
