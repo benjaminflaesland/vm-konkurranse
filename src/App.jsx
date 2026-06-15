@@ -451,14 +451,25 @@ export default function App() {
             <div style={S.subtitle}>Tippekonkurranse</div>
           </div>
         </div>
-        <div style={S.modeToggle}>
-          {tabs.map(([m, label]) => (
-            <button key={m} onClick={() => setMode(m)}
-              disabled={m === "present" && participants.length < 2}
-              style={{ ...S.modeBtn, ...(mode === m ? S.modeBtnActive : {}) }}>
-              {label}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={S.modeToggle}>
+            {tabs.map(([m, label]) => (
+              <button key={m} onClick={() => setMode(m)}
+                disabled={m === "present" && participants.length < 2}
+                style={{ ...S.modeBtn, ...(mode === m ? S.modeBtnActive : {}) }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {isAdmin && (
+            <button title="Lås siden" onClick={() => {
+              setIsAdmin(false);
+              setAdminPassword("");
+              sessionStorage.removeItem("vm_admin");
+              sessionStorage.removeItem("vm_pw");
+              setMode("stilling");
+            }} style={{ ...S.removeBtn, fontSize: 16, padding: "6px 10px" }}>🔒</button>
+          )}
         </div>
       </header>
 
