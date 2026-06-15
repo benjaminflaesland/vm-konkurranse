@@ -704,6 +704,79 @@ function Stilling({ participants }) {
 }
 
 // ─────────────────────────────────────────────
+// FASIT VIEW — read-only fasit
+// ─────────────────────────────────────────────
+function FasitView({ fasit }) {
+  const row = (label, value) => value ? (
+    <div style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: "1px solid #161618" }}>
+      <span style={{ ...S.fasitMatchLabel, color: "#8E8E93" }}>{label}</span>
+      <span style={{ fontWeight: 700, color: "#fff" }}>{value}</span>
+    </div>
+  ) : null;
+
+  const anyGroupData = GROUP_KEYS.some((g) => fasit.groups[g].first);
+  const anyMatchData = Object.values(fasit.matches).some(Boolean);
+
+  return (
+    <div style={S.adminWrap}>
+      {!anyGroupData && !anyMatchData ? (
+        <div style={S.empty}>Fasit er ikke lagt inn ennå.</div>
+      ) : (
+        <>
+          {anyGroupData && (
+            <div style={S.fasitSection}>
+              <div style={S.fasitSectionTitle}>Gruppespill</div>
+              <div style={S.fasitGrid}>
+                {GROUP_KEYS.map((g) => {
+                  const { first, second } = fasit.groups[g];
+                  if (!first && !second) return null;
+                  return (
+                    <div key={g} style={S.fasitGroupCard}>
+                      <div style={S.fasitGroupName}>Gruppe {g}</div>
+                      {first && <div style={{ color: "#fff", fontSize: 13, padding: "3px 0" }}>1. {first}</div>}
+                      {second && <div style={{ color: "#fff", fontSize: 13, padding: "3px 0" }}>2. {second}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {anyMatchData && (
+            <div style={S.fasitSection}>
+              <div style={S.fasitSectionTitle}>Sluttspill</div>
+              {Object.entries(fasit.matches).filter(([, v]) => v).map(([m, v]) =>
+                row(`M${m}`, v)
+              )}
+              {fasit.bronse && row("Bronse", fasit.bronse)}
+              {fasit.finale && row("🏆 Mester", fasit.finale)}
+            </div>
+          )}
+
+          {fasit.quiz.some(Boolean) && (
+            <div style={S.fasitSection}>
+              <div style={S.fasitSectionTitle}>VM-quiz fasit</div>
+              {QUIZ_QUESTIONS.map((q, i) =>
+                fasit.quiz[i] ? (
+                  <div key={i} style={{ ...S.fasitRow, marginBottom: 8 }}>
+                    <span style={{ ...S.fasitMatchLabel, width: "auto", flex: 1, whiteSpace: "normal", fontSize: 13 }}>
+                      {i + 1}. {q}
+                    </span>
+                    <span style={{ fontWeight: 700, color: "#00DC64", minWidth: 120, textAlign: "right" }}>
+                      {fasit.quiz[i]}
+                    </span>
+                  </div>
+                ) : null
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // FASIT — faktiske resultater
 // ─────────────────────────────────────────────
 function Fasit({ fasit, setFasit }) {
