@@ -348,19 +348,61 @@ async function fetchResultsFromAPI() {
 export default function App() {
   const [participants, setParticipants] = useState([]);
   const [fasit, setFasit] = useState(emptyFasit());
-  const [mode, setMode] = useState("deltakere");
+  const [mode, setMode] = useState("stilling");
   const [loaded, setLoaded] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem("vm_admin") === "1");
+  const [adminPassword, setAdminPassword] = useState(() => sessionStorage.getItem("vm_pw") || "");
+  const [logoClicks, setLogoClicks] = useState(0);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const logoClickTimer = useRef(null);
 
   useEffect(() => {
-    const _d = loadData(); (() => { const d = _d;
+    loadData().then((d) => {
       if (d?.participants) setParticipants(d.participants);
       if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
       setLoaded(true);
-    })();
+    });
   }, []);
+
   useEffect(() => {
-    if (loaded) saveData({ participants, fasit });
+    if (loaded && isAdmin) saveData({ participants, fasit }, adminPassword);
   }, [participants, fasit, loaded]);
+
+  const handleLogoClock = () => {
+    clearTimeout(logoClickTimer.current);
+    setLogoClicks((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        setShowPasswordModal(true);
+        return 0;
+      }
+      logoClickTimer.current = setTimeout(() => setLogoClicks(0), 2000);
+      return next;
+    });
+  };
+
+  const handlePasswordSubmit = async () => {
+    const res = await fetch("/.netlify/functions/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: passwordInput }),
+    });
+    const { ok } = await res.json();
+    if (ok) {
+      setIsAdmin(true);
+      setAdminPassword(passwordInput);
+      sessionStorage.setItem("vm_admin", "1");
+      sessionStorage.setItem("vm_pw", passwordInput);
+      setShowPasswordModal(false);
+      setPasswordInput("");
+      setPasswordError(false);
+      setMode("deltakere");
+    } else {
+      setPasswordError(true);
+    }
+  };
 
   if (!loaded) {
     return (
