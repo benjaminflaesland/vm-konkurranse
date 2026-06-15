@@ -653,6 +653,57 @@ function Deltakere({ participants, setParticipants, fasit }) {
 }
 
 // ─────────────────────────────────────────────
+// STILLING — public leaderboard
+// ─────────────────────────────────────────────
+function Stilling({ participants }) {
+  const ranked = rankingAt(participants, ROUNDS.length - 1);
+  const withTotal = ranked.map((p) => ({
+    ...p,
+    total: ROUNDS.reduce((s, r) => s + (p.scores[r.key] || 0), 0) + (p.bonus || 0),
+  }));
+
+  if (participants.length === 0) {
+    return (
+      <div style={S.adminWrap}>
+        <div style={S.empty}>Konkurransen er ikke startet ennå.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={S.adminWrap}>
+      <div style={{ ...S.importCard, marginBottom: 14 }}>
+        <div style={S.importTitle}>🏆 Stilling</div>
+        <div style={S.importDesc}>Oppdateres av administrator etter hver kampdag.</div>
+      </div>
+      <div style={{ background: "#1C1C1E", borderRadius: 16, overflow: "hidden" }}>
+        {withTotal.map((p, i) => (
+          <div key={p.id} style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: "16px 20px", borderBottom: i < withTotal.length - 1 ? "1px solid #2C2C2E" : "none",
+          }}>
+            <span style={{ width: 28, fontWeight: 800, fontSize: 18, color: i < 3 ? "#00DC64" : "#8E8E93" }}>
+              {i + 1}
+            </span>
+            <span style={{ ...S.dot, background: p.color, width: 12, height: 12 }} />
+            <span style={{ flex: 1, fontWeight: 700, fontSize: 16 }}>{p.name}</span>
+            {ROUNDS.map((r) => (
+              <span key={r.key} style={{ fontSize: 12, color: "#8E8E93", minWidth: 36, textAlign: "right" }}>
+                <span style={{ color: "#fff", fontWeight: 600 }}>{p.scores[r.key] || 0}</span>
+                <span style={{ fontSize: 10 }}> {r.short}</span>
+              </span>
+            ))}
+            <span style={{ fontWeight: 900, fontSize: 20, color: "#00DC64", minWidth: 44, textAlign: "right" }}>
+              {p.total}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // FASIT — faktiske resultater
 // ─────────────────────────────────────────────
 function Fasit({ fasit, setFasit }) {
