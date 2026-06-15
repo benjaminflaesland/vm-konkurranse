@@ -81,6 +81,42 @@ const PALETTE = [
 
 const STORAGE_KEY = "vm2026_ranking_data_v2";
 
+const DEMO_DATA = import.meta.env.DEV ? (() => {
+  const mkPicks = (mester, bronse, semifinister, kvart, r8, r16, groups, thirds, quiz) => ({
+    groups, thirds, bronse, finale: mester,
+    matches: {
+      ...Object.fromEntries(Object.keys(CELLS.r16).map((id, i) => [id, r16[i] || ""])),
+      ...Object.fromEntries(Object.keys(CELLS.r8).map((id, i) => [id, r8[i] || ""])),
+      ...Object.fromEntries(Object.keys(CELLS.kvart).map((id, i) => [id, kvart[i] || ""])),
+      101: semifinister[0], 102: semifinister[1],
+    },
+    sfLosers: { 101: semifinister[2] || "", 102: semifinister[3] || "" },
+    quiz,
+  });
+
+  const g = (f, s) => ({ first: f, second: s });
+  const groups1 = { A: g("Mexico","USA"), B: g("Canada","Sveits"), C: g("Brasil","Marokko"), D: g("USA","Australia"), E: g("Tyskland","Elfenbenskysten"), F: g("Nederland","Japan"), G: g("Belgia","Iran"), H: g("Spania","Uruguay"), I: g("Frankrike","Norge"), J: g("Argentina","Østerrike"), K: g("Portugal","Colombia"), L: g("England","Kroatia") };
+  const groups2 = { A: g("USA","Mexico"), B: g("Canada","Sveits"), C: g("Brasil","Marokko"), D: g("Australia","USA"), E: g("Frankrike","Norge"), F: g("Nederland","Japan"), G: g("Spania","Iran"), H: g("Spania","Uruguay"), I: g("Frankrike","Norge"), J: g("Brasil","Østerrike"), K: g("Portugal","Colombia"), L: g("England","Kroatia") };
+
+  const participants = [
+    { id: "1", name: "Ola Nordmann", color: "#00DC64", scores: { gruppe: 26, r16: 12, r8: 9, kvart: 8, semi: 10, bronse_finale: 15 }, bonus: 3, picks: mkPicks("Brasil","Frankrike",["Brasil","Argentina","Frankrike","Portugal"],["Brasil","Frankrike","Portugal","Argentina"],["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina"],["Brasil","Frankrike","Frankrike","USA","Spania","England","Spania","Colombia","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"],groups1,["Norge","Belgia","Iran","Marokko","Uruguay","Elfenbenskysten","Japan","Australia"],["3","Ronaldo","8","140","Nei","5","Panama","3","Brasil","Nei"]) },
+    { id: "2", name: "Kari Hansen", color: "#3D7EF5", scores: { gruppe: 22, r16: 9, r8: 6, kvart: 4, semi: 5, bronse_finale: 10 }, bonus: 2, picks: mkPicks("Frankrike","Brasil",["Frankrike","Argentina","Brasil","Spania"],["Frankrike","Argentina","Brasil","Spania"],["Frankrike","Argentina","Brasil","Spania","Portugal","England","USA","Nederland"],["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"],groups2,["Norge","Sveits","Iran","Australia","Uruguay","Elfenbenskysten","Japan","Marokko"],["2","Mbappe","7","135","Ja","4","Kosovo","2","Frankrike","Ja"]) },
+    { id: "3", name: "Per Persen", color: "#E8334A", scores: { gruppe: 18, r16: 6, r8: 3, kvart: 0, semi: 0, bronse_finale: 10 }, bonus: 1, picks: mkPicks("Argentina","Portugal",["Argentina","Brasil","Portugal","Spania"],["Argentina","Brasil","Portugal","Spania"],["Argentina","Brasil","Portugal","Spania"],["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"],groups1,["Belgia","Norge","Marokko","Iran","Uruguay","Japan","Australia","Kroatia"],["4","Neymar","9","150","Nei","6","Bolivia","4","Brasil","Nei"]) },
+    { id: "4", name: "Lise Lie", color: "#F5A623", scores: { gruppe: 30, r16: 15, r8: 12, kvart: 12, semi: 15, bronse_finale: 0 }, bonus: 4, picks: mkPicks("Spania","Nederland",["Spania","Brasil","Argentina","Frankrike"],["Spania","Brasil","Argentina","Frankrike"],["Spania","Brasil","Argentina","Frankrike"],["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"],groups1,["Norge","Belgia","Iran","Marokko","Japan","Australia","Uruguay","Elfenbenskysten"],["3","Mbappe","8","140","Nei","5","Panama","3","Brasil","Nei"]) },
+    { id: "5", name: "Jonas Berg", color: "#A855F7", scores: { gruppe: 20, r16: 9, r8: 9, kvart: 8, semi: 5, bronse_finale: 10 }, bonus: 2, picks: mkPicks("Brasil","Argentina",["Brasil","Frankrike","Argentina","Portugal"],["Brasil","Frankrike","Argentina","Portugal"],["Brasil","Frankrike","Argentina","Portugal"],["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"],groups2,["Norge","Sveits","Marokko","Iran","Japan","Australia","Kroatia","Belgia"],["3","Ronaldo","7","145","Ja","5","Panama","3","Brasil","Nei"]) },
+  ];
+
+  const fasit = {
+    groups: { A: g("Mexico","USA"), B: g("Canada","Sveits"), C: g("Brasil","Marokko"), D: g("USA","Australia"), E: g("Frankrike","Norge"), F: g("Nederland","Japan"), G: g("Belgia","Iran"), H: g("Spania","Uruguay"), I: g("Frankrike","Norge"), J: g("Argentina","Østerrike"), K: g("Portugal","Colombia"), L: g("England","Kroatia") },
+    matches: { ...Object.fromEntries(Object.keys(CELLS.r16).map((id, i) => [id, ["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"][i]])), ...Object.fromEntries(Object.keys(CELLS.r8).map((id, i) => [id, ["Brasil","Frankrike","Portugal","Argentina","USA","Spania","England","Kroatia"][i]])), ...Object.fromEntries(Object.keys(CELLS.kvart).map((id, i) => [id, ["Brasil","Frankrike","Portugal","Argentina"][i]])), 101: "Brasil", 102: "Frankrike" },
+    sfLosers: { 101: "Portugal", 102: "Argentina" },
+    bronse: "Argentina", finale: "Brasil",
+    quiz: ["3","Ronaldo","8","140","Nei","5","Panama","3","Brasil","Nei"],
+  };
+
+  return { participants, fasit };
+})() : null;
+
 async function saveData(data, adminPassword) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
   if (!adminPassword) return;
@@ -351,6 +387,7 @@ export default function App() {
   const [mode, setMode] = useState("stilling");
   const [loaded, setLoaded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem("vm_admin") === "1");
+  const [theme, setTheme] = useState(() => localStorage.getItem("vm_theme") || "dark");
   const [adminPassword, setAdminPassword] = useState(() => sessionStorage.getItem("vm_pw") || "");
   const [logoClicks, setLogoClicks] = useState(0);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -359,6 +396,12 @@ export default function App() {
   const logoClickTimer = useRef(null);
 
   useEffect(() => {
+    if (DEMO_DATA) {
+      setParticipants(DEMO_DATA.participants);
+      setFasit({ ...emptyFasit(), ...DEMO_DATA.fasit });
+      setLoaded(true);
+      return;
+    }
     loadData().then((d) => {
       if (d?.participants) setParticipants(d.participants);
       if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
@@ -417,7 +460,7 @@ export default function App() {
   const tabs = isAdmin ? [...publicTabs, ...adminTabs] : publicTabs;
 
   return (
-    <div style={S.app}>
+    <div style={S.app} data-theme={theme}>
       <style>{CSS}</style>
 
       {showPasswordModal && (
@@ -461,7 +504,29 @@ export default function App() {
               </button>
             ))}
           </div>
-          {isAdmin && (
+          <button onClick={() => {
+            const next = theme === "dark" ? "light" : "dark";
+            setTheme(next);
+            localStorage.setItem("vm_theme", next);
+          }} style={{
+            ...S.removeBtn,
+            fontSize: 13, padding: "5px 12px", fontWeight: 600,
+            color: "var(--text3)", border: "1px solid var(--border)", borderRadius: 20,
+          }}>
+            {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+          </button>
+          {import.meta.env.DEV && (
+            <button onClick={() => {
+              if (isAdmin) {
+                setIsAdmin(false); setAdminPassword(""); setMode("stilling");
+              } else {
+                setIsAdmin(true); setAdminPassword("dev"); setMode("deltakere");
+              }
+            }} style={{ ...S.removeBtn, fontSize: 11, padding: "5px 10px", color: isAdmin ? "#00DC64" : "#F5A623", borderColor: isAdmin ? "#00DC6440" : "#F5A62340" }}>
+              {isAdmin ? "ADMIN ON" : "ADMIN OFF"}
+            </button>
+          )}
+          {isAdmin && !import.meta.env.DEV && (
             <button title="Lås siden" onClick={() => {
               setIsAdmin(false);
               setAdminPassword("");
@@ -491,7 +556,15 @@ function Deltakere({ participants, setParticipants, fasit }) {
   const [newName, setNewName] = useState("");
   const [importMsg, setImportMsg] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const confirmTimer = useRef(null);
   const fileRef = useRef(null);
+
+  const askDelete = (id) => {
+    clearTimeout(confirmTimer.current);
+    setConfirmDeleteId(id);
+    confirmTimer.current = setTimeout(() => setConfirmDeleteId(null), 2500);
+  };
 
   const add = () => {
     const name = newName.trim();
@@ -641,9 +714,13 @@ function Deltakere({ participants, setParticipants, fasit }) {
                         {p.picks && (
                           <button onClick={() => setExpandedId(isExpanded ? null : p.id)}
                             style={{ ...S.removeBtn, color: isExpanded ? "#00DC64" : "#8E8E93", borderColor: "transparent" }}
-                            title="Se tips">👁</button>
+                            title="Se tips">{isExpanded ? "▲" : "▼"}</button>
                         )}
-                        <button onClick={() => remove(p.id)} style={S.removeBtn} title="Fjern">✕</button>
+                        {confirmDeleteId === p.id
+                          ? <button onClick={() => { remove(p.id); setConfirmDeleteId(null); }}
+                              style={{ ...S.removeBtn, color: "#E8334A", borderColor: "#E8334A55", fontWeight: 700, fontSize: 11, padding: "4px 8px", whiteSpace: "nowrap" }}>Slett?</button>
+                          : <button onClick={() => askDelete(p.id)} style={S.removeBtn} title="Fjern">✕</button>
+                        }
                       </td>
                     </tr>
                     {isExpanded && p.picks && (() => {
@@ -669,7 +746,7 @@ function Deltakere({ participants, setParticipants, fasit }) {
                               {/* Gruppespill */}
                               <div style={{ padding: "14px 16px", borderBottom: "1px solid #2C2C2E" }}>
                                 <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>Gruppespill</div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(165px,1fr))", gap: 4 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(165px,1fr))", gap: 4, marginBottom: p.picks.thirds?.some(Boolean) ? 10 : 0 }}>
                                   {GROUP_KEYS.map((g) => {
                                     const { first, second } = p.picks.groups?.[g] || {};
                                     if (!first && !second) return null;
@@ -683,39 +760,142 @@ function Deltakere({ participants, setParticipants, fasit }) {
                                     );
                                   })}
                                 </div>
+                                {p.picks.thirds?.some(Boolean) && (
+                                  <>
+                                    <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6 }}>Beste 3ere videre</div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                      {p.picks.thirds.filter(Boolean).map((t, i) => (
+                                        <div key={i} style={{ padding: "3px 9px", background: "#1C1C1E", borderRadius: 6, color: "#8E8E93", fontSize: 12, fontWeight: 600 }}>
+                                          {t}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
                               </div>
 
                               {/* Bracket */}
-                              <div style={{ padding: "14px 16px", borderBottom: "1px solid #2C2C2E", overflowX: "auto" }}>
-                                <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 12 }}>Sluttspill</div>
-                                <div style={{ display: "flex", alignItems: "flex-start", gap: 0, minWidth: "max-content" }}>
-                                  {bracketRounds.map(({ short, ids, twoCol }, ri) => {
-                                    const winners = ids.map((id) => p.picks.matches?.[id]).filter(Boolean);
-                                    if (!winners.length) return null;
-                                    return (
-                                      <React.Fragment key={short}>
-                                        <div style={{ flexShrink: 0 }}>
-                                          <div style={{ color: "#555", fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>{short}</div>
-                                          <div style={{ display: "grid", gridTemplateColumns: twoCol ? "1fr 1fr" : "1fr", gap: 3 }}>
-                                            {winners.map((w, i) => (
-                                              <div key={i}>{chip(w, false)}</div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                        <div style={{ display: "flex", alignItems: "center", padding: "20px 6px 0", color: "#333", fontSize: 16, flexShrink: 0 }}>›</div>
-                                      </React.Fragment>
-                                    );
-                                  })}
-                                  {/* Finale column */}
-                                  <div style={{ flexShrink: 0 }}>
-                                    <div style={{ color: "#555", fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>FINALE</div>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                                      {p.picks.bronse && chip(`Bronse: ${p.picks.bronse}`, false)}
-                                      {p.picks.finale && chip(`🏆 ${p.picks.finale}`, true)}
+                              {(() => {
+                                const SH = 36; // slot height per 16-del team
+                                const CW = 108; // chip column width
+                                const CONN = 20; // connector width
+                                const rDefs = [
+                                  { short: "16-DEL", ids: Object.keys(CELLS.r16).map(Number) },
+                                  { short: "8-DEL",  ids: Object.keys(CELLS.r8).map(Number) },
+                                  { short: "KVART",  ids: Object.keys(CELLS.kvart).map(Number) },
+                                  { short: "SEMI",   ids: [101, 102] },
+                                ];
+                                const rTeams = rDefs.map(({ ids }) => ids.map(id => p.picks.matches?.[id]).filter(Boolean));
+                                const maxTeams = rTeams[0].length || 16;
+                                const TH = maxTeams * SH;
+
+                                return (
+                                  <div style={{ padding: "14px 16px", borderBottom: "1px solid #2C2C2E", overflowX: "auto" }}>
+                                    <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 12 }}>Sluttspill</div>
+                                    <div style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content" }}>
+                                      {rDefs.map(({ short }, ri) => {
+                                        const teams = rTeams[ri];
+                                        if (!teams.length) return null;
+                                        const mult = Math.pow(2, ri);
+                                        const slotH = mult * SH;
+                                        return (
+                                          <React.Fragment key={short}>
+                                            {/* Round column */}
+                                            <div style={{ flexShrink: 0, width: CW }}>
+                                              <div style={{ color: "#555", fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>{short}</div>
+                                              <div style={{ height: TH, position: "relative" }}>
+                                                {teams.map((team, i) => {
+                                                  const isEven = i % 2 === 0;
+                                                  return (
+                                                    <div key={i} style={{ position: "absolute", top: i * slotH, left: 0, right: 0, height: slotH, display: "flex", alignItems: "center" }}>
+                                                      {chip(team, false)}
+                                                      {/* Bracket arm */}
+                                                      <div style={{
+                                                        position: "absolute", right: -1, width: CONN / 2,
+                                                        top: isEven ? "50%" : 0,
+                                                        bottom: isEven ? 0 : "50%",
+                                                        borderRight: "1px solid #2C2C2E",
+                                                        borderTop: isEven ? "1px solid #2C2C2E" : "none",
+                                                        borderBottom: !isEven ? "1px solid #2C2C2E" : "none",
+                                                      }} />
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                            {/* Connector */}
+                                            <div style={{ flexShrink: 0, width: CONN, height: TH + 20, position: "relative", marginTop: 20 }}>
+                                              {Array.from({ length: Math.ceil(teams.length / 2) }).map((_, pi) => (
+                                                <div key={pi} style={{
+                                                  position: "absolute",
+                                                  top: (pi * 2 + 1) * slotH - 0.5,
+                                                  left: CONN / 2, right: 0,
+                                                  height: 1, background: "#2C2C2E",
+                                                }} />
+                                              ))}
+                                            </div>
+                                          </React.Fragment>
+                                        );
+                                      })}
+                                      {/* Bronse + Finale — two mini-brackets */}
+                                      <div style={{ flexShrink: 0, height: TH, display: "flex", flexDirection: "column", justifyContent: "center", gap: 24 }}>
+                                        {(() => {
+                                          const MiniMatch = ({ label, t1, t2, winner, gold }) => (
+                                            <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                                              {/* Two teams with bracket arm */}
+                                              <div style={{ position: "relative" }}>
+                                                <div style={{ color: "#555", fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>{label}</div>
+                                                {[t1, t2].filter(Boolean).map((team, i) => {
+                                                  const isEven = i % 2 === 0;
+                                                  return (
+                                                    <div key={i} style={{ height: SH, display: "flex", alignItems: "center", position: "relative" }}>
+                                                      {chip(team, false)}
+                                                      <div style={{
+                                                        position: "absolute", right: -1, width: CONN / 2,
+                                                        top: isEven ? "50%" : 0,
+                                                        bottom: isEven ? 0 : "50%",
+                                                        borderRight: "1px solid #2C2C2E",
+                                                        borderTop: isEven ? "1px solid #2C2C2E" : "none",
+                                                        borderBottom: !isEven ? "1px solid #2C2C2E" : "none",
+                                                      }} />
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                              {/* Connector line */}
+                                              <div style={{ width: CONN, height: 1, background: "#2C2C2E", marginTop: SH / 2 }} />
+                                              {/* Winner */}
+                                              {winner && (
+                                                <div style={{ marginTop: SH / 2 }}>
+                                                  {chip(winner, gold)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                          return (
+                                            <>
+                                              <MiniMatch
+                                                label="FINALE"
+                                                t1={p.picks.matches?.[101]}
+                                                t2={p.picks.matches?.[102]}
+                                                winner={p.picks.finale ? `🏆 ${p.picks.finale}` : null}
+                                                gold={true}
+                                              />
+                                              <MiniMatch
+                                                label="BRONSEFINALE"
+                                                t1={p.picks.sfLosers?.[101]}
+                                                t2={p.picks.sfLosers?.[102]}
+                                                winner={p.picks.bronse ? `🥉 ${p.picks.bronse}` : null}
+                                                gold={false}
+                                              />
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              </div>
+                                );
+                              })()}
 
                               {/* Quiz */}
                               {p.picks.quiz?.some(Boolean) && (
@@ -1377,23 +1557,23 @@ function Confetti() {
 const S = {
   app: {
     minHeight: "100vh",
-    background: "#000000",
-    color: "#FFFFFF",
+    background: "var(--bg0)",
+    color: "var(--text1)",
     fontFamily: "'Inter', system-ui, sans-serif",
     display: "flex", flexDirection: "column",
   },
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "16px 20px", background: "#000000",
+    padding: "16px 20px", background: "var(--bg0)",
     flexWrap: "wrap", gap: 10,
   },
   logo: { display: "flex", alignItems: "center", gap: 12 },
   ball: { fontSize: 28 },
-  title: { fontSize: 24, fontWeight: 900, letterSpacing: -0.5, color: "#FFFFFF" },
-  subtitle: { fontSize: 11, color: "#8E8E93", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600 },
-  modeToggle: { display: "flex", gap: 4, background: "#1C1C1E", padding: 5, borderRadius: 50 },
+  title: { fontSize: 24, fontWeight: 900, letterSpacing: -0.5, color: "var(--text1)" },
+  subtitle: { fontSize: 11, color: "var(--text3)", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600 },
+  modeToggle: { display: "flex", gap: 4, background: "var(--bg3)", padding: 5, borderRadius: 50 },
   modeBtn: {
-    border: "none", background: "transparent", color: "#8E8E93",
+    border: "none", background: "transparent", color: "var(--text3)",
     padding: "8px 16px", borderRadius: 50, cursor: "pointer", fontSize: 14, fontWeight: 700,
     transition: "all .2s",
   },
@@ -1401,9 +1581,9 @@ const S = {
 
   adminWrap: { padding: 16, maxWidth: 1100, margin: "0 auto", width: "100%", boxSizing: "border-box" },
 
-  importCard: { background: "#1C1C1E", borderRadius: 16, padding: 18, marginBottom: 14 },
+  importCard: { background: "var(--bg3)", borderRadius: 16, padding: 18, marginBottom: 14 },
   importTitle: { fontSize: 17, fontWeight: 800, marginBottom: 6 },
-  importDesc: { fontSize: 13.5, color: "#8E8E93", lineHeight: 1.6, marginBottom: 14 },
+  importDesc: { fontSize: 13.5, color: "var(--text3)", lineHeight: 1.6, marginBottom: 14 },
   fileBtn: {
     background: "#00DC64", color: "#000", padding: "12px 22px",
     borderRadius: 50, fontWeight: 800, fontSize: 14, cursor: "pointer", display: "inline-block",
@@ -1416,52 +1596,52 @@ const S = {
 
   addRow: { display: "flex", gap: 10, marginBottom: 16 },
   input: {
-    flex: 1, background: "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff",
+    flex: 1, background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text1)",
     padding: "14px 16px", borderRadius: 14, fontSize: 15, outline: "none",
   },
   addBtn: {
-    background: "#1C1C1E", color: "#00DC64", border: "1px solid #00DC64", padding: "14px 22px",
+    background: "var(--bg3)", color: "#00DC64", border: "1px solid #00DC64", padding: "14px 22px",
     borderRadius: 14, fontWeight: 800, fontSize: 15, cursor: "pointer",
   },
   empty: {
-    textAlign: "center", color: "#8E8E93", padding: "60px 20px", fontSize: 15,
-    background: "#1C1C1E", borderRadius: 16, lineHeight: 1.7,
+    textAlign: "center", color: "var(--text3)", padding: "60px 20px", fontSize: 15,
+    background: "var(--bg3)", borderRadius: 16, lineHeight: 1.7,
   },
-  tableScroll: { overflowX: "auto", borderRadius: 16, background: "#1C1C1E" },
+  tableScroll: { overflowX: "auto", borderRadius: 16, background: "var(--bg3)" },
   table: { width: "100%", borderCollapse: "collapse", minWidth: 720 },
   th: {
-    padding: "14px 8px", fontSize: 11, color: "#8E8E93", textTransform: "uppercase",
-    letterSpacing: 1, textAlign: "center", borderBottom: "1px solid #2C2C2E", fontWeight: 800,
+    padding: "14px 8px", fontSize: 11, color: "var(--text3)", textTransform: "uppercase",
+    letterSpacing: 1, textAlign: "center", borderBottom: "1px solid var(--border)", fontWeight: 800,
   },
-  td: { padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #161618" },
+  td: { padding: "10px 8px", textAlign: "center", borderBottom: "1px solid var(--bg2)" },
   dot: { display: "inline-block", width: 10, height: 10, borderRadius: "50%", marginRight: 9, verticalAlign: "middle" },
   scoreInput: {
-    width: 52, background: "#000", border: "1px solid #2C2C2E", color: "#fff",
+    width: 52, background: "var(--bg0)", border: "1px solid var(--border)", color: "var(--text1)",
     padding: "7px 4px", borderRadius: 8, fontSize: 14, textAlign: "center", outline: "none",
   },
-  removeBtn: { background: "transparent", border: "none", color: "#48484A", cursor: "pointer", fontSize: 15 },
-  previewBox: { marginTop: 16, background: "#1C1C1E", borderRadius: 16, padding: 18 },
-  previewTitle: { fontSize: 11, color: "#8E8E93", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 14, fontWeight: 800 },
-  previewItem: { display: "flex", alignItems: "center", gap: 8, padding: "11px 0", fontSize: 15, borderBottom: "1px solid #2C2C2E" },
-  previewRank: { width: 28, color: "#8E8E93", fontWeight: 800 },
+  removeBtn: { background: "transparent", border: "none", color: "var(--text5)", cursor: "pointer", fontSize: 15 },
+  previewBox: { marginTop: 16, background: "var(--bg3)", borderRadius: 16, padding: 18 },
+  previewTitle: { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 14, fontWeight: 800 },
+  previewItem: { display: "flex", alignItems: "center", gap: 8, padding: "11px 0", fontSize: 15, borderBottom: "1px solid var(--border)" },
+  previewRank: { width: 28, color: "var(--text3)", fontWeight: 800 },
 
   // Fasit
-  fasitSection: { background: "#1C1C1E", borderRadius: 16, padding: 18, marginBottom: 14 },
+  fasitSection: { background: "var(--bg3)", borderRadius: 16, padding: 18, marginBottom: 14 },
   fasitSectionTitle: { fontSize: 16, fontWeight: 800, marginBottom: 14 },
-  pts: { fontSize: 12, color: "#8E8E93", fontWeight: 600 },
+  pts: { fontSize: 12, color: "var(--text3)", fontWeight: 600 },
   fasitGrid: {
     display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10,
   },
-  fasitGroupCard: { background: "#000", borderRadius: 12, padding: 12 },
-  fasitGroupName: { fontSize: 12, fontWeight: 800, color: "#8E8E93", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
+  fasitGroupCard: { background: "var(--bg0)", borderRadius: 12, padding: 12 },
+  fasitGroupName: { fontSize: 12, fontWeight: 800, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 },
   fasitSelect: {
-    width: "100%", background: "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff",
+    width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text1)",
     padding: "9px 10px", borderRadius: 9, fontSize: 13.5, outline: "none", marginBottom: 6,
   },
   fasitRow: { display: "flex", alignItems: "center", gap: 8 },
-  fasitMatchLabel: { width: 86, fontSize: 12.5, fontWeight: 700, color: "#8E8E93", flexShrink: 0 },
+  fasitMatchLabel: { width: 86, fontSize: 12.5, fontWeight: 700, color: "var(--text3)", flexShrink: 0 },
   fasitInput: {
-    flex: 1, background: "#000", border: "1px solid #2C2C2E", color: "#fff",
+    flex: 1, background: "var(--bg0)", border: "1px solid var(--border)", color: "var(--text1)",
     padding: "9px 10px", borderRadius: 9, fontSize: 13.5, outline: "none", minWidth: 0,
   },
 
@@ -1470,19 +1650,19 @@ const S = {
     maxWidth: 1200, margin: "0 auto", width: "100%", boxSizing: "border-box",
   },
   chartCard: {
-    flex: 1, background: "#1C1C1E", borderRadius: 20, padding: 18,
+    flex: 1, background: "var(--bg3)", borderRadius: 20, padding: 18,
     display: "flex", flexDirection: "column", justifyContent: "center",
   },
   presentNav: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 12 },
-  phaseLabel: { fontSize: 17, color: "#fff", fontWeight: 900, textAlign: "center" },
+  phaseLabel: { fontSize: 17, color: "var(--text1)", fontWeight: 900, textAlign: "center" },
   navBtn: {
-    background: "#1C1C1E", border: "1px solid #2C2C2E", color: "#fff",
+    background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text1)",
     padding: "14px 20px", borderRadius: 50, cursor: "pointer", fontSize: 14, fontWeight: 700,
   },
   navBtnPrimary: { background: "#00DC64", color: "#000", border: "none" },
 
   bonusHeader: {
-    fontSize: 24, color: "#fff", textAlign: "center", marginBottom: 22, fontWeight: 900,
+    fontSize: 24, color: "var(--text1)", textAlign: "center", marginBottom: 22, fontWeight: 900,
     display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap",
   },
   bonusPop: {
@@ -1493,24 +1673,24 @@ const S = {
     position: "absolute", left: 0, right: 0, display: "flex", alignItems: "center",
     gap: 12, padding: "0 16px", borderRadius: 12,
     transition: "top .8s cubic-bezier(.34,1.2,.64,1), background .4s",
-    background: "#000",
+    background: "var(--bg0)",
   },
-  bonusRank: { width: 28, fontWeight: 800, color: "#8E8E93", fontSize: 15 },
-  bonusName: { flex: 1, fontSize: 16, fontWeight: 700, color: "#fff" },
+  bonusRank: { width: 28, fontWeight: 800, color: "var(--text3)", fontSize: 15 },
+  bonusName: { flex: 1, fontSize: 16, fontWeight: 700, color: "var(--text1)" },
   bonusStar: { color: "#F5A623", fontWeight: 800, fontSize: 14 },
-  bonusScore: { fontSize: 20, fontWeight: 900, color: "#fff", minWidth: 44, textAlign: "right" },
+  bonusScore: { fontSize: 20, fontWeight: 900, color: "var(--text1)", minWidth: 44, textAlign: "right" },
 
   winnerCard: {
-    flex: 1, background: "#1C1C1E", borderRadius: 20, padding: 24,
+    flex: 1, background: "var(--bg3)", borderRadius: 20, padding: 24,
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
     position: "relative", overflow: "hidden",
   },
   podiumWrap: { display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 16, marginBottom: 28, minHeight: 270 },
-  winnerTitle: { fontSize: 30, fontWeight: 900, color: "#fff", textAlign: "center" },
-  winnerSub: { fontSize: 14, color: "#8E8E93", marginTop: 6 },
+  winnerTitle: { fontSize: 30, fontWeight: 900, color: "var(--text1)", textAlign: "center" },
+  winnerSub: { fontSize: 14, color: "var(--text3)", marginTop: 6 },
   restList: { listStyle: "none", margin: "20px 0 0", padding: 0, width: "100%", maxWidth: 440 },
-  restItem: { display: "flex", alignItems: "center", gap: 8, padding: "11px 0", fontSize: 15, borderBottom: "1px solid #2C2C2E" },
-  restRank: { width: 28, color: "#8E8E93", fontWeight: 800 },
+  restItem: { display: "flex", alignItems: "center", gap: 8, padding: "11px 0", fontSize: 15, borderBottom: "1px solid var(--border)" },
+  restRank: { width: 28, color: "var(--text3)", fontWeight: 800 },
 
   confetti: { position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" },
   modalOverlay: {
@@ -1518,13 +1698,39 @@ const S = {
     display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
   },
   modal: {
-    background: "#1C1C1E", borderRadius: 20, padding: 28, width: "100%", maxWidth: 340,
+    background: "var(--bg3)", borderRadius: 20, padding: 28, width: "100%", maxWidth: 340,
     display: "flex", flexDirection: "column", gap: 4,
   },
-  modalTitle: { fontSize: 18, fontWeight: 800, marginBottom: 12, color: "#fff" },
+  modalTitle: { fontSize: 18, fontWeight: 800, marginBottom: 12, color: "var(--text1)" },
 };
 
 const CSS = `
+  :root {
+    --bg0: #000000;
+    --bg1: #111111;
+    --bg2: #161618;
+    --bg3: #1C1C1E;
+    --bg4: #2C2C2E;
+    --border: #2C2C2E;
+    --text1: #FFFFFF;
+    --text2: #E5E5EA;
+    --text3: #8E8E93;
+    --text4: #555555;
+    --text5: #48484A;
+  }
+  [data-theme="light"] {
+    --bg0: #F5F5F7;
+    --bg1: #EBEBF0;
+    --bg2: #E5E5EA;
+    --bg3: #FFFFFF;
+    --bg4: #D1D1D6;
+    --border: #C6C6C8;
+    --text1: #000000;
+    --text2: #1C1C1E;
+    --text3: #636366;
+    --text4: #AEAEB2;
+    --text5: #8E8E93;
+  }
   .bonus-pop { animation: popIn .5s cubic-bezier(.34,1.56,.64,1); }
   @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
   .bonus-star { animation: starPop .6s cubic-bezier(.34,1.56,.64,1); }
