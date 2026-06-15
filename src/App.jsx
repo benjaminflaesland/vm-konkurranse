@@ -479,6 +479,7 @@ export default function App() {
 function Deltakere({ participants, setParticipants, fasit }) {
   const [newName, setNewName] = useState("");
   const [importMsg, setImportMsg] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
   const fileRef = useRef(null);
 
   const add = () => {
@@ -603,29 +604,81 @@ function Deltakere({ participants, setParticipants, fasit }) {
             <tbody>
               {participants.map((p) => {
                 const base = ROUNDS.reduce((s, r) => s + (p.scores[r.key] || 0), 0);
+                const isExpanded = expandedId === p.id;
+                const colCount = ROUNDS.length + 4;
                 return (
-                  <tr key={p.id}>
-                    <td style={{ ...S.td, textAlign: "left", paddingLeft: 16, fontWeight: 600, whiteSpace: "nowrap" }}>
-                      <span style={{ ...S.dot, background: p.color }} />
-                      {p.name}
-                      {p.picks && <span title="Excel importert" style={{ marginLeft: 6, fontSize: 12 }}>📄</span>}
-                    </td>
-                    {ROUNDS.map((r) => (
-                      <td key={r.key} style={S.td}>
-                        <input type="number" min="0" value={p.scores[r.key] ?? ""}
-                          onChange={(e) => upd(p.id, r.key, e.target.value)} style={S.scoreInput} />
+                  <React.Fragment key={p.id}>
+                    <tr>
+                      <td style={{ ...S.td, textAlign: "left", paddingLeft: 16, fontWeight: 600, whiteSpace: "nowrap" }}>
+                        <span style={{ ...S.dot, background: p.color }} />
+                        {p.name}
+                        {p.picks && <span title="Excel importert" style={{ marginLeft: 6, fontSize: 12 }}>📄</span>}
                       </td>
-                    ))}
-                    <td style={S.td}>
-                      <input type="number" min="0" value={p.bonus || ""}
-                        onChange={(e) => upd(p.id, "bonus", e.target.value)}
-                        style={{ ...S.scoreInput, borderColor: "#F5A62355", color: "#F5A623", fontWeight: 700 }} />
-                    </td>
-                    <td style={{ ...S.td, fontWeight: 800, color: "#00DC64", fontSize: 16 }}>{base + (p.bonus || 0)}</td>
-                    <td style={S.td}>
-                      <button onClick={() => remove(p.id)} style={S.removeBtn} title="Fjern">✕</button>
-                    </td>
-                  </tr>
+                      {ROUNDS.map((r) => (
+                        <td key={r.key} style={S.td}>
+                          <input type="number" min="0" value={p.scores[r.key] ?? ""}
+                            onChange={(e) => upd(p.id, r.key, e.target.value)} style={S.scoreInput} />
+                        </td>
+                      ))}
+                      <td style={S.td}>
+                        <input type="number" min="0" value={p.bonus || ""}
+                          onChange={(e) => upd(p.id, "bonus", e.target.value)}
+                          style={{ ...S.scoreInput, borderColor: "#F5A62355", color: "#F5A623", fontWeight: 700 }} />
+                      </td>
+                      <td style={{ ...S.td, fontWeight: 800, color: "#00DC64", fontSize: 16 }}>{base + (p.bonus || 0)}</td>
+                      <td style={S.td}>
+                        {p.picks && (
+                          <button onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                            style={{ ...S.removeBtn, color: isExpanded ? "#00DC64" : "#8E8E93", borderColor: "transparent" }}
+                            title="Se tips">👁</button>
+                        )}
+                        <button onClick={() => remove(p.id)} style={S.removeBtn} title="Fjern">✕</button>
+                      </td>
+                    </tr>
+                    {isExpanded && p.picks && (
+                      <tr>
+                        <td colSpan={colCount} style={{ padding: "0 8px 12px 8px", background: "#111" }}>
+                          <div style={{ borderRadius: 12, background: "#1C1C1E", padding: "14px 18px", fontSize: 13 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
+                              <div>
+                                <div style={{ fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>Gruppespill</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: "4px 20px" }}>
+                                  {GROUP_KEYS.map((g) => {
+                                    const { first, second } = p.picks.groups?.[g] || {};
+                                    return (first || second) ? (
+                                      <div key={g}>
+                                        <span style={{ color: "#8E8E93" }}>Gr.{g} </span>
+                                        <span style={{ color: "#fff" }}>{first || "?"} / {second || "?"}</span>
+                                      </div>
+                                    ) : null;
+                                  })}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>Sluttspill</div>
+                                {Object.entries(p.picks.matches || {}).filter(([,v]) => v).map(([m, v]) => (
+                                  <div key={m}><span style={{ color: "#8E8E93" }}>K{m}: </span><span style={{ color: "#fff" }}>{v}</span></div>
+                                ))}
+                                {p.picks.bronse && <div><span style={{ color: "#8E8E93" }}>Bronse: </span><span style={{ color: "#fff" }}>{p.picks.bronse}</span></div>}
+                                {p.picks.finale && <div><span style={{ color: "#00DC64", fontWeight: 700 }}>🏆 Mester: {p.picks.finale}</span></div>}
+                              </div>
+                              {p.picks.quiz?.some(Boolean) && (
+                                <div>
+                                  <div style={{ fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>Quiz</div>
+                                  {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
+                                    <div key={i} style={{ marginBottom: 3 }}>
+                                      <span style={{ color: "#8E8E93" }}>{i+1}. {q}: </span>
+                                      <span style={{ color: "#fff" }}>{p.picks.quiz[i]}</span>
+                                    </div>
+                                  ) : null)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
