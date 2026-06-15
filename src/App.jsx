@@ -267,7 +267,7 @@ function toNorwegian(name) {
 async function fetchResultsFromAPI() {
   // I Claude-artifacten: kaller worldcup26.ir direkte (kan feile pga CORS)
   // På Vercel: bytt til /api/wc?endpoint=groups og /api/wc?endpoint=games
-  const BASE = "/api/wc?endpoint=";
+  const BASE = "/.netlify/functions/wc?endpoint=";
 
   const [groupsRes, gamesRes] = await Promise.all([
     fetch(`${BASE}groups`),
