@@ -716,7 +716,6 @@ function Deltakere({ participants, setParticipants, fasit }) {
                             )}
 
                           </div>
-                          </div>
                         </td>
                       </tr>
                     )}
