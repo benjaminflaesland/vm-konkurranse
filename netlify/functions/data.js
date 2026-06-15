@@ -1,38 +1,42 @@
-// netlify/functions/data.js
 import { getStore } from "@netlify/blobs";
 
 const BLOB_KEY = "competition-data";
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(204).end();
+const HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Content-Type": "application/json",
+};
+
+export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: HEADERS, body: "" };
 
   const store = getStore("vm2026");
 
-  if (req.method === "GET") {
+  if (event.httpMethod === "GET") {
     try {
       const data = await store.get(BLOB_KEY, { type: "json" });
-      return res.json(data || {});
+      return { statusCode: 200, headers: HEADERS, body: JSON.stringify(data || {}) };
     } catch {
-      return res.json({});
+      return { statusCode: 200, headers: HEADERS, body: "{}" };
     }
   }
 
-  if (req.method === "POST") {
-    const auth = req.headers.authorization || "";
+  if (event.httpMethod === "POST") {
+    const auth = (event.headers.authorization || event.headers.Authorization) || "";
     const password = auth.replace("Bearer ", "");
     if (!process.env.ADMIN_PASSWORD || password !== process.env.ADMIN_PASSWORD) {
-      return res.status(401).json({ error: "Uautorisert" });
+      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Uautorisert" }) };
     }
     try {
-      await store.setJSON(BLOB_KEY, req.body);
-      return res.json({ ok: true });
+      const body = JSON.parse(event.body || "{}");
+      await store.setJSON(BLOB_KEY, body);
+      return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ ok: true }) };
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return { statusCode: 500, headers: HEADERS, body: JSON.stringify({ error: e.message }) };
     }
   }
 
-  res.status(405).end();
-}
+  return { statusCode: 405, headers: HEADERS, body: "" };
+};
