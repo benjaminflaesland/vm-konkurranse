@@ -646,83 +646,98 @@ function Deltakere({ participants, setParticipants, fasit }) {
                         <button onClick={() => remove(p.id)} style={S.removeBtn} title="Fjern">✕</button>
                       </td>
                     </tr>
-                    {isExpanded && p.picks && (
-                      <tr>
-                        <td colSpan={colCount} style={{ padding: "4px 12px 16px", background: "#111" }}>
-                          <div style={{ borderRadius: 14, background: "#161618", border: "1px solid #2C2C2E", overflow: "hidden", fontSize: 13 }}>
+                    {isExpanded && p.picks && (() => {
+                      const bracketRounds = [
+                        { label: "16-del", short: "16-DEL", ids: Object.keys(CELLS.r16).map(Number), twoCol: true },
+                        { label: "8-del", short: "8-DEL", ids: Object.keys(CELLS.r8).map(Number) },
+                        { label: "Kvart", short: "KVART", ids: Object.keys(CELLS.kvart).map(Number) },
+                        { label: "Semi", short: "SEMI", ids: [101, 102] },
+                      ];
+                      const chip = (name, gold) => (
+                        <div style={{
+                          padding: "4px 9px", borderRadius: 6, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+                          background: gold ? "#2A2000" : "#232323",
+                          color: gold ? "#F5A623" : "#E5E5EA",
+                          border: `1px solid ${gold ? "#F5A62340" : "#333"}`,
+                        }}>{name}</div>
+                      );
+                      return (
+                        <tr>
+                          <td colSpan={colCount} style={{ padding: "4px 12px 16px", background: "#111" }}>
+                            <div style={{ borderRadius: 14, background: "#161618", border: "1px solid #2C2C2E", overflow: "hidden", fontSize: 13 }}>
 
-                            {/* Gruppespill */}
-                            <div style={{ padding: "16px 18px", borderBottom: "1px solid #2C2C2E" }}>
-                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Gruppespill</div>
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px,1fr))", gap: 5 }}>
-                                {GROUP_KEYS.map((g) => {
-                                  const { first, second } = p.picks.groups?.[g] || {};
-                                  if (!first && !second) return null;
-                                  return (
-                                    <div key={g} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "5px 10px", background: "#1C1C1E", borderRadius: 8, whiteSpace: "nowrap", overflow: "hidden" }}>
-                                      <span style={{ color: "#555", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{g}</span>
-                                      <span style={{ color: "#fff", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{first || "?"}</span>
-                                      <span style={{ color: "#3C3C3E", fontSize: 10 }}>▸</span>
-                                      <span style={{ color: "#8E8E93", overflow: "hidden", textOverflow: "ellipsis" }}>{second || "?"}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Sluttspill */}
-                            <div style={{ padding: "16px 18px", borderBottom: "1px solid #2C2C2E" }}>
-                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Sluttspill</div>
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px,1fr))", gap: 5 }}>
-                                {[
-                                  { label: "16-delsfinaler", ids: Object.keys(CELLS.r16).map(Number) },
-                                  { label: "8-delsfinaler", ids: Object.keys(CELLS.r8).map(Number) },
-                                  { label: "Kvartfinaler", ids: Object.keys(CELLS.kvart).map(Number) },
-                                  { label: "Semifinaler", ids: [101, 102] },
-                                ].map(({ label, ids }) => {
-                                  const winners = ids.map((id) => p.picks.matches?.[id]).filter(Boolean);
-                                  if (!winners.length) return null;
-                                  return (
-                                    <div key={label} style={{ background: "#1C1C1E", borderRadius: 8, padding: "8px 12px" }}>
-                                      <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>{label}</div>
-                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px" }}>
-                                        {winners.map((w, i) => (
-                                          <span key={i} style={{ color: "#fff", fontWeight: 600 }}>{w}</span>
-                                        ))}
+                              {/* Gruppespill */}
+                              <div style={{ padding: "14px 16px", borderBottom: "1px solid #2C2C2E" }}>
+                                <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>Gruppespill</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(165px,1fr))", gap: 4 }}>
+                                  {GROUP_KEYS.map((g) => {
+                                    const { first, second } = p.picks.groups?.[g] || {};
+                                    if (!first && !second) return null;
+                                    return (
+                                      <div key={g} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", background: "#1C1C1E", borderRadius: 7, overflow: "hidden" }}>
+                                        <span style={{ color: "#444", fontSize: 10, fontWeight: 800, flexShrink: 0, minWidth: 12 }}>{g}</span>
+                                        <span style={{ color: "#E5E5EA", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{first || "?"}</span>
+                                        <span style={{ color: "#333", fontSize: 9, flexShrink: 0 }}>›</span>
+                                        <span style={{ color: "#8E8E93", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{second || "?"}</span>
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                                {(p.picks.bronse || p.picks.finale) && (
-                                  <div style={{ background: "#1C1C1E", borderRadius: 8, padding: "8px 12px" }}>
-                                    <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Finale</div>
-                                    {p.picks.bronse && <div style={{ color: "#8E8E93", marginBottom: 2 }}>Bronse: <span style={{ color: "#fff", fontWeight: 600 }}>{p.picks.bronse}</span></div>}
-                                    {p.picks.finale && <div style={{ color: "#F5A623", fontWeight: 800 }}>🏆 {p.picks.finale}</div>}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Quiz */}
-                            {p.picks.quiz?.some(Boolean) && (
-                              <div style={{ padding: "16px 18px" }}>
-                                <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Quiz</div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 4 }}>
-                                  {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
-                                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", background: "#1C1C1E", borderRadius: 8 }}>
-                                      <span style={{ color: "#3C3C3E", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{i+1}</span>
-                                      <span style={{ color: "#8E8E93", flex: 1, fontSize: 12 }}>{q}</span>
-                                      <span style={{ color: "#00DC64", fontWeight: 700, whiteSpace: "nowrap", fontSize: 12 }}>{p.picks.quiz[i]}</span>
-                                    </div>
-                                  ) : null)}
+                                    );
+                                  })}
                                 </div>
                               </div>
-                            )}
 
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                              {/* Bracket */}
+                              <div style={{ padding: "14px 16px", borderBottom: "1px solid #2C2C2E", overflowX: "auto" }}>
+                                <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 12 }}>Sluttspill</div>
+                                <div style={{ display: "flex", alignItems: "flex-start", gap: 0, minWidth: "max-content" }}>
+                                  {bracketRounds.map(({ short, ids, twoCol }, ri) => {
+                                    const winners = ids.map((id) => p.picks.matches?.[id]).filter(Boolean);
+                                    if (!winners.length) return null;
+                                    return (
+                                      <React.Fragment key={short}>
+                                        <div style={{ flexShrink: 0 }}>
+                                          <div style={{ color: "#555", fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>{short}</div>
+                                          <div style={{ display: "grid", gridTemplateColumns: twoCol ? "1fr 1fr" : "1fr", gap: 3 }}>
+                                            {winners.map((w, i) => (
+                                              <div key={i}>{chip(w, false)}</div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", padding: "20px 6px 0", color: "#333", fontSize: 16, flexShrink: 0 }}>›</div>
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                  {/* Finale column */}
+                                  <div style={{ flexShrink: 0 }}>
+                                    <div style={{ color: "#555", fontSize: 9, fontWeight: 700, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>FINALE</div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                      {p.picks.bronse && chip(`Bronse: ${p.picks.bronse}`, false)}
+                                      {p.picks.finale && chip(`🏆 ${p.picks.finale}`, true)}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Quiz */}
+                              {p.picks.quiz?.some(Boolean) && (
+                                <div style={{ padding: "14px 16px" }}>
+                                  <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>Quiz</div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 3 }}>
+                                    {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
+                                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", background: "#1C1C1E", borderRadius: 7 }}>
+                                        <span style={{ color: "#444", fontSize: 10, fontWeight: 700, flexShrink: 0, minWidth: 14 }}>{i+1}</span>
+                                        <span style={{ color: "#8E8E93", flex: 1, fontSize: 12 }}>{q}</span>
+                                        <span style={{ color: "#00DC64", fontWeight: 700, whiteSpace: "nowrap", fontSize: 12 }}>{p.picks.quiz[i]}</span>
+                                      </div>
+                                    ) : null)}
+                                  </div>
+                                </div>
+                              )}
+
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </React.Fragment>
                 );
               })}
