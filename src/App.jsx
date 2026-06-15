@@ -412,11 +412,39 @@ export default function App() {
     );
   }
 
+  const publicTabs = [["stilling", "Stilling"], ["fasit-view", "Fasit"]];
+  const adminTabs = [["deltakere", "Deltakere"], ["fasit", "Fasit"], ["present", "Kåring"]];
+  const tabs = isAdmin ? [...publicTabs, ...adminTabs] : publicTabs;
+
   return (
     <div style={S.app}>
       <style>{CSS}</style>
+
+      {showPasswordModal && (
+        <div style={S.modalOverlay}>
+          <div style={S.modal}>
+            <div style={S.modalTitle}>🔐 Admin-tilgang</div>
+            <input
+              type="password"
+              autoFocus
+              value={passwordInput}
+              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+              onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
+              placeholder="Passord"
+              style={{ ...S.input, marginBottom: 8 }}
+            />
+            {passwordError && <div style={{ color: "#E8334A", fontSize: 13, marginBottom: 8 }}>Feil passord</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handlePasswordSubmit} style={S.calcBtn}>Logg inn</button>
+              <button onClick={() => { setShowPasswordModal(false); setPasswordInput(""); setPasswordError(false); }}
+                style={{ ...S.addBtn }}>Avbryt</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header style={S.header}>
-        <div style={S.logo}>
+        <div onClick={handleLogoClock} style={{ ...S.logo, cursor: "default", userSelect: "none" }}>
           <span style={S.ball}>⚽</span>
           <div>
             <div style={S.title}>VM 2026</div>
@@ -424,11 +452,7 @@ export default function App() {
           </div>
         </div>
         <div style={S.modeToggle}>
-          {[
-            ["deltakere", "Deltakere"],
-            ["fasit", "Fasit"],
-            ["present", "Kåring"],
-          ].map(([m, label]) => (
+          {tabs.map(([m, label]) => (
             <button key={m} onClick={() => setMode(m)}
               disabled={m === "present" && participants.length < 2}
               style={{ ...S.modeBtn, ...(mode === m ? S.modeBtnActive : {}) }}>
@@ -438,11 +462,13 @@ export default function App() {
         </div>
       </header>
 
+      {mode === "stilling" && <Stilling participants={participants} />}
+      {mode === "fasit-view" && <FasitView fasit={fasit} />}
       {mode === "deltakere" && (
         <Deltakere participants={participants} setParticipants={setParticipants} fasit={fasit} />
       )}
       {mode === "fasit" && <Fasit fasit={fasit} setFasit={setFasit} />}
-      {mode === "present" && <Present participants={participants} onExit={() => setMode("deltakere")} />}
+      {mode === "present" && <Present participants={participants} onExit={() => setMode("stilling")} />}
     </div>
   );
 }
@@ -1250,6 +1276,15 @@ const S = {
   restRank: { width: 28, color: "#8E8E93", fontWeight: 800 },
 
   confetti: { position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" },
+  modalOverlay: {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)",
+    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+  },
+  modal: {
+    background: "#1C1C1E", borderRadius: 20, padding: 28, width: "100%", maxWidth: 340,
+    display: "flex", flexDirection: "column", gap: 4,
+  },
+  modalTitle: { fontSize: 18, fontWeight: 800, marginBottom: 12, color: "#fff" },
 };
 
 const CSS = `
