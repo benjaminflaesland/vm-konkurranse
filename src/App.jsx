@@ -648,43 +648,74 @@ function Deltakere({ participants, setParticipants, fasit }) {
                     </tr>
                     {isExpanded && p.picks && (
                       <tr>
-                        <td colSpan={colCount} style={{ padding: "0 8px 12px 8px", background: "#111" }}>
-                          <div style={{ borderRadius: 12, background: "#1C1C1E", padding: "14px 18px", fontSize: 13 }}>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
-                              <div>
-                                <div style={{ fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>Gruppespill</div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: "4px 20px" }}>
-                                  {GROUP_KEYS.map((g) => {
-                                    const { first, second } = p.picks.groups?.[g] || {};
-                                    return (first || second) ? (
-                                      <div key={g}>
-                                        <span style={{ color: "#8E8E93" }}>Gr.{g} </span>
-                                        <span style={{ color: "#fff" }}>{first || "?"} / {second || "?"}</span>
-                                      </div>
-                                    ) : null;
-                                  })}
-                                </div>
+                        <td colSpan={colCount} style={{ padding: "0 8px 16px", background: "#111" }}>
+                          <div style={{ borderRadius: 14, background: "#1C1C1E", padding: "18px 20px", fontSize: 13, display: "flex", flexDirection: "column", gap: 18 }}>
+
+                            {/* Gruppespill */}
+                            <div>
+                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Gruppespill</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 6 }}>
+                                {GROUP_KEYS.map((g) => {
+                                  const { first, second } = p.picks.groups?.[g] || {};
+                                  if (!first && !second) return null;
+                                  return (
+                                    <div key={g} style={{ background: "#2C2C2E", borderRadius: 8, padding: "7px 10px" }}>
+                                      <span style={{ color: "#8E8E93", fontSize: 11, fontWeight: 600 }}>GR. {g}  </span>
+                                      <span style={{ color: "#fff", fontWeight: 600 }}>{first || "?"}</span>
+                                      <span style={{ color: "#555", margin: "0 4px" }}>·</span>
+                                      <span style={{ color: "#aaa" }}>{second || "?"}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                              <div>
-                                <div style={{ fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>Sluttspill</div>
-                                {Object.entries(p.picks.matches || {}).filter(([,v]) => v).map(([m, v]) => (
-                                  <div key={m}><span style={{ color: "#8E8E93" }}>K{m}: </span><span style={{ color: "#fff" }}>{v}</span></div>
-                                ))}
-                                {p.picks.bronse && <div><span style={{ color: "#8E8E93" }}>Bronse: </span><span style={{ color: "#fff" }}>{p.picks.bronse}</span></div>}
-                                {p.picks.finale && <div><span style={{ color: "#00DC64", fontWeight: 700 }}>🏆 Mester: {p.picks.finale}</span></div>}
+                            </div>
+
+                            {/* Sluttspill */}
+                            <div>
+                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Sluttspill</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                                {[
+                                  { label: "16-delsfinaler", ids: Object.keys(CELLS.r16).map(Number) },
+                                  { label: "8-delsfinaler", ids: Object.keys(CELLS.r8).map(Number) },
+                                  { label: "Kvartfinaler", ids: Object.keys(CELLS.kvart).map(Number) },
+                                  { label: "Semifinaler", ids: [101, 102] },
+                                ].map(({ label, ids }) => {
+                                  const winners = ids.map((id) => p.picks.matches?.[id]).filter(Boolean);
+                                  if (!winners.length) return null;
+                                  return (
+                                    <div key={label} style={{ background: "#2C2C2E", borderRadius: 8, padding: "7px 10px", minWidth: 130 }}>
+                                      <div style={{ color: "#8E8E93", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                                      {winners.map((w, i) => <div key={i} style={{ color: "#fff", fontWeight: 600 }}>{w}</div>)}
+                                    </div>
+                                  );
+                                })}
+                                {(p.picks.bronse || p.picks.finale) && (
+                                  <div style={{ background: "#2C2C2E", borderRadius: 8, padding: "7px 10px", minWidth: 130 }}>
+                                    <div style={{ color: "#8E8E93", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Finale</div>
+                                    {p.picks.bronse && <div style={{ color: "#aaa" }}>Bronse: <span style={{ color: "#fff", fontWeight: 600 }}>{p.picks.bronse}</span></div>}
+                                    {p.picks.finale && <div style={{ color: "#F5A623", fontWeight: 800, fontSize: 14 }}>🏆 {p.picks.finale}</div>}
+                                  </div>
+                                )}
                               </div>
-                              {p.picks.quiz?.some(Boolean) && (
-                                <div>
-                                  <div style={{ fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>Quiz</div>
+                            </div>
+
+                            {/* Quiz */}
+                            {p.picks.quiz?.some(Boolean) && (
+                              <div>
+                                <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Quiz</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px,1fr))", gap: 4 }}>
                                   {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
-                                    <div key={i} style={{ marginBottom: 3 }}>
-                                      <span style={{ color: "#8E8E93" }}>{i+1}. {q}: </span>
-                                      <span style={{ color: "#fff" }}>{p.picks.quiz[i]}</span>
+                                    <div key={i} style={{ display: "flex", gap: 8, background: "#2C2C2E", borderRadius: 8, padding: "6px 10px" }}>
+                                      <span style={{ color: "#555", minWidth: 16, fontWeight: 600 }}>{i+1}.</span>
+                                      <span style={{ color: "#8E8E93", flex: 1 }}>{q}</span>
+                                      <span style={{ color: "#00DC64", fontWeight: 700, whiteSpace: "nowrap" }}>{p.picks.quiz[i]}</span>
                                     </div>
                                   ) : null)}
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
+
+                          </div>
                           </div>
                         </td>
                       </tr>
