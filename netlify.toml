@@ -8,3 +8,9 @@
 
 [functions."wc"]
   timeout = 30
+
+[functions."auth"]
+  timeout = 10
+
+[functions."data"]
+  timeout = 15
