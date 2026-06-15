@@ -265,55 +265,60 @@ function toNorwegian(name) {
 }
 
 async function fetchResultsFromAPI() {
-  // I Claude-artifacten: kaller worldcup26.ir direkte (kan feile pga CORS)
-  // På Vercel: bytt til /api/wc?endpoint=groups og /api/wc?endpoint=games
   const BASE = "/.netlify/functions/wc?endpoint=";
 
-  const [groupsRes, gamesRes] = await Promise.all([
+  // Hent teams og groups parallelt; games er valgfritt (kan time ut)
+  const [teamsRes, groupsRes, gamesRes] = await Promise.all([
+    fetch(`${BASE}teams`),
     fetch(`${BASE}groups`),
-    fetch(`${BASE}games`),
+    fetch(`${BASE}games`).catch(() => null),
   ]);
-  if (!groupsRes.ok || !gamesRes.ok) throw new Error("API utilgjengelig");
+  if (!teamsRes.ok || !groupsRes.ok) throw new Error("API utilgjengelig");
 
+  const teamsData = await teamsRes.json();
   const groupsData = await groupsRes.json();
-  const gamesData = await gamesRes.json();
   const result = emptyFasit();
 
-  // Gruppe-standings (midlertidig basert på poeng)
-  const groups = groupsData?.groups || groupsData || [];
-  for (const g of groups) {
-    const letter = (g.name || g.group || "").toUpperCase();
-    if (!GROUP_KEYS.includes(letter)) continue;
-    const teams = [...(g.teams || g.standings || [])]
-      .sort((a, b) =>
-        (b.points ?? 0) - (a.points ?? 0) ||
-        (b.goal_difference ?? b.gd ?? 0) - (a.goal_difference ?? a.gd ?? 0) ||
-        (b.goals_for ?? b.gf ?? 0) - (a.goals_for ?? a.gf ?? 0));
-    if (teams[0]) result.groups[letter].first = toNorwegian(teams[0].name || teams[0].team);
-    if (teams[1]) result.groups[letter].second = toNorwegian(teams[1].name || teams[1].team);
+  // Bygg team-ID → norsk navn-kart
+  const teamMap = {};
+  for (const t of (teamsData.teams || [])) {
+    teamMap[String(t.id)] = toNorwegian(t.name_en);
   }
 
-  // Kampresultater — kun fullspilte
-  const games = gamesData?.games || gamesData?.matches || gamesData || [];
-  for (const g of games) {
-    const status = (g.status || g.state || "").toLowerCase();
-    const done = ["ft","finished","full time","aet","pen"].some(s => status.includes(s));
-    if (!done) continue;
+  // Gruppe-standings
+  for (const g of (groupsData?.groups || [])) {
+    const letter = (g.name || "").toUpperCase();
+    if (!GROUP_KEYS.includes(letter)) continue;
+    const teams = [...(g.teams || [])].sort((a, b) =>
+      (parseInt(b.pts) || 0) - (parseInt(a.pts) || 0) ||
+      (parseInt(b.gd) || 0) - (parseInt(a.gd) || 0) ||
+      (parseInt(b.gf) || 0) - (parseInt(a.gf) || 0)
+    );
+    if (teams[0]) result.groups[letter].first = teamMap[teams[0].team_id] || "";
+    if (teams[1]) result.groups[letter].second = teamMap[teams[1].team_id] || "";
+  }
 
-    const hs = g.home_score ?? g.homeScore ?? g.score?.home ?? null;
-    const as_ = g.away_score ?? g.awayScore ?? g.score?.away ?? null;
-    if (hs === null || as_ === null) continue;
+  // Kampresultater (kun hvis games-endepunktet svarte)
+  if (gamesRes?.ok) {
+    const gamesData = await gamesRes.json();
+    for (const g of (gamesData?.games || [])) {
+      if (g.finished !== "TRUE") continue;
+      const hs = parseInt(g.home_score);
+      const as_ = parseInt(g.away_score);
+      if (isNaN(hs) || isNaN(as_) || hs === as_) continue;
 
-    const home = toNorwegian(g.home_team?.name || g.home_team || g.homeTeam?.name || g.homeTeam || "");
-    const away = toNorwegian(g.away_team?.name || g.away_team || g.awayTeam?.name || g.awayTeam || "");
-    const winner = hs > as_ ? home : as_ > hs ? away : null;
-    if (!winner) continue;
-
-    const mn = g.match_number ?? g.matchNumber ?? g.id ?? null;
-    if (!mn) continue;
-    if (mn >= 73 && mn <= 102) result.matches[String(mn)] = winner;
-    else if (mn === 103) result.bronse = winner;
-    else if (mn === 104) result.finale = winner;
+      const home = toNorwegian(g.home_team_name_en || "");
+      const away = toNorwegian(g.away_team_name_en || "");
+      const winner = hs > as_ ? home : away;
+      const loser = hs > as_ ? away : home;
+      const mn = parseInt(g.id);
+      if (!mn) continue;
+      if (mn >= 73 && mn <= 102) {
+        result.matches[String(mn)] = winner;
+        if (mn === 101 || mn === 102) result.sfLosers[String(mn)] = loser;
+      } else if (mn === 103) result.bronse = winner;
+      else if (mn === 104) result.finale = winner;
+    }
   }
 
   return result;
