@@ -648,22 +648,22 @@ function Deltakere({ participants, setParticipants, fasit }) {
                     </tr>
                     {isExpanded && p.picks && (
                       <tr>
-                        <td colSpan={colCount} style={{ padding: "0 8px 16px", background: "#111" }}>
-                          <div style={{ borderRadius: 14, background: "#1C1C1E", padding: "18px 20px", fontSize: 13, display: "flex", flexDirection: "column", gap: 18 }}>
+                        <td colSpan={colCount} style={{ padding: "4px 12px 16px", background: "#111" }}>
+                          <div style={{ borderRadius: 14, background: "#161618", border: "1px solid #2C2C2E", overflow: "hidden", fontSize: 13 }}>
 
                             {/* Gruppespill */}
-                            <div>
-                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Gruppespill</div>
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 6 }}>
+                            <div style={{ padding: "16px 18px", borderBottom: "1px solid #2C2C2E" }}>
+                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Gruppespill</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px,1fr))", gap: 5 }}>
                                 {GROUP_KEYS.map((g) => {
                                   const { first, second } = p.picks.groups?.[g] || {};
                                   if (!first && !second) return null;
                                   return (
-                                    <div key={g} style={{ background: "#2C2C2E", borderRadius: 8, padding: "7px 10px" }}>
-                                      <span style={{ color: "#8E8E93", fontSize: 11, fontWeight: 600 }}>GR. {g}  </span>
-                                      <span style={{ color: "#fff", fontWeight: 600 }}>{first || "?"}</span>
-                                      <span style={{ color: "#555", margin: "0 4px" }}>·</span>
-                                      <span style={{ color: "#aaa" }}>{second || "?"}</span>
+                                    <div key={g} style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "5px 10px", background: "#1C1C1E", borderRadius: 8, whiteSpace: "nowrap", overflow: "hidden" }}>
+                                      <span style={{ color: "#555", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{g}</span>
+                                      <span style={{ color: "#fff", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>{first || "?"}</span>
+                                      <span style={{ color: "#3C3C3E", fontSize: 10 }}>▸</span>
+                                      <span style={{ color: "#8E8E93", overflow: "hidden", textOverflow: "ellipsis" }}>{second || "?"}</span>
                                     </div>
                                   );
                                 })}
@@ -671,9 +671,9 @@ function Deltakere({ participants, setParticipants, fasit }) {
                             </div>
 
                             {/* Sluttspill */}
-                            <div>
-                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Sluttspill</div>
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <div style={{ padding: "16px 18px", borderBottom: "1px solid #2C2C2E" }}>
+                              <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Sluttspill</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px,1fr))", gap: 5 }}>
                                 {[
                                   { label: "16-delsfinaler", ids: Object.keys(CELLS.r16).map(Number) },
                                   { label: "8-delsfinaler", ids: Object.keys(CELLS.r8).map(Number) },
@@ -683,17 +683,21 @@ function Deltakere({ participants, setParticipants, fasit }) {
                                   const winners = ids.map((id) => p.picks.matches?.[id]).filter(Boolean);
                                   if (!winners.length) return null;
                                   return (
-                                    <div key={label} style={{ background: "#2C2C2E", borderRadius: 8, padding: "7px 10px", minWidth: 130 }}>
-                                      <div style={{ color: "#8E8E93", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{label}</div>
-                                      {winners.map((w, i) => <div key={i} style={{ color: "#fff", fontWeight: 600 }}>{w}</div>)}
+                                    <div key={label} style={{ background: "#1C1C1E", borderRadius: 8, padding: "8px 12px" }}>
+                                      <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>{label}</div>
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px" }}>
+                                        {winners.map((w, i) => (
+                                          <span key={i} style={{ color: "#fff", fontWeight: 600 }}>{w}</span>
+                                        ))}
+                                      </div>
                                     </div>
                                   );
                                 })}
                                 {(p.picks.bronse || p.picks.finale) && (
-                                  <div style={{ background: "#2C2C2E", borderRadius: 8, padding: "7px 10px", minWidth: 130 }}>
-                                    <div style={{ color: "#8E8E93", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Finale</div>
-                                    {p.picks.bronse && <div style={{ color: "#aaa" }}>Bronse: <span style={{ color: "#fff", fontWeight: 600 }}>{p.picks.bronse}</span></div>}
-                                    {p.picks.finale && <div style={{ color: "#F5A623", fontWeight: 800, fontSize: 14 }}>🏆 {p.picks.finale}</div>}
+                                  <div style={{ background: "#1C1C1E", borderRadius: 8, padding: "8px 12px" }}>
+                                    <div style={{ color: "#555", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Finale</div>
+                                    {p.picks.bronse && <div style={{ color: "#8E8E93", marginBottom: 2 }}>Bronse: <span style={{ color: "#fff", fontWeight: 600 }}>{p.picks.bronse}</span></div>}
+                                    {p.picks.finale && <div style={{ color: "#F5A623", fontWeight: 800 }}>🏆 {p.picks.finale}</div>}
                                   </div>
                                 )}
                               </div>
@@ -701,14 +705,14 @@ function Deltakere({ participants, setParticipants, fasit }) {
 
                             {/* Quiz */}
                             {p.picks.quiz?.some(Boolean) && (
-                              <div>
-                                <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Quiz</div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px,1fr))", gap: 4 }}>
+                              <div style={{ padding: "16px 18px" }}>
+                                <div style={{ fontWeight: 700, color: "#8E8E93", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Quiz</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 4 }}>
                                   {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
-                                    <div key={i} style={{ display: "flex", gap: 8, background: "#2C2C2E", borderRadius: 8, padding: "6px 10px" }}>
-                                      <span style={{ color: "#555", minWidth: 16, fontWeight: 600 }}>{i+1}.</span>
-                                      <span style={{ color: "#8E8E93", flex: 1 }}>{q}</span>
-                                      <span style={{ color: "#00DC64", fontWeight: 700, whiteSpace: "nowrap" }}>{p.picks.quiz[i]}</span>
+                                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", background: "#1C1C1E", borderRadius: 8 }}>
+                                      <span style={{ color: "#3C3C3E", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{i+1}</span>
+                                      <span style={{ color: "#8E8E93", flex: 1, fontSize: 12 }}>{q}</span>
+                                      <span style={{ color: "#00DC64", fontWeight: 700, whiteSpace: "nowrap", fontSize: 12 }}>{p.picks.quiz[i]}</span>
                                     </div>
                                   ) : null)}
                                 </div>
