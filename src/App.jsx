@@ -249,12 +249,15 @@ function useIsMobile(bp = 640) {
 
 const FLAGS = {
   "Mexico": "🇲🇽", "USA": "🇺🇸", "Canada": "🇨🇦", "Sveits": "🇨🇭", "Brasil": "🇧🇷",
-  "Marokko": "🇲🇦", "Australia": "🇦🇺", "Tyskland": "🇩🇪", "Elfenbenskysten": "🇨🇮",
-  "Nederland": "🇳🇱", "Japan": "🇯🇵", "Belgia": "🇧🇪", "Iran": "🇮🇷", "Spania": "🇪🇸",
-  "Uruguay": "🇺🇾", "Frankrike": "🇫🇷", "Norge": "🇳🇴", "Argentina": "🇦🇷",
+  "Marokko": "🇲🇦", "Australia": "🇦🇺", "Tyskland": "🇩🇪", "Elfenbenskysten": "🇨🇮", "Haiti": "🇭🇹",
+  "Nederland": "🇳🇱", "Japan": "🇯🇵", "Belgia": "🇧🇪", "Iran": "🇮🇷", "Spania": "🇪🇸", "Ecuador": "🇪🇨",
+  "Uruguay": "🇺🇾", "Frankrike": "🇫🇷", "Norge": "🇳🇴", "Argentina": "🇦🇷", "Paraguay": "🇵🇾",
   "Østerrike": "🇦🇹", "Portugal": "🇵🇹", "Colombia": "🇨🇴", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-  "Kroatia": "🇭🇷", "Panama": "🇵🇦", "Bolivia": "🇧🇴", "Kosovo": "🇽🇰", "Senegal": "🇸🇳",
-  "Sør-Korea": "🇰🇷", "Sør-Afrika": "🇿🇦", "Qatar": "🇶🇦", "Tsjekkia": "🇨🇿",
+  "Kroatia": "🇭🇷", "Panama": "🇵🇦", "Bolivia": "🇧🇴", "Kosovo": "🇽🇰", "Senegal": "🇸🇳", "Irak": "🇮🇶",
+  "Sør-Korea": "🇰🇷", "Sør-Afrika": "🇿🇦", "Sør Afrika": "🇿🇦", "Qatar": "🇶🇦", "Tsjekkia": "🇨🇿",
+  "New Zealand": "🇳🇿", "Egypt": "🇪🇬", "Kapp Verde": "🇨🇻", "Saudi Arabia": "🇸🇦", "Sverige": "🇸🇪", "Tunisia": "🇹🇳",
+  "Bosnia og Herzegovina": "🇧🇦", "Skottland": "🏴", "Tyrkia": "🇹🇷", "Curacao": "🇨🇼", "Curaçao": "🇨🇼",
+  "Algerie": "🇩🇿", "Jordan": "🇯🇴", "Kongo": "🇨🇩", "Uzbekistan": "🇺🇿", "Ghana": "🇬🇭",
 };
 const flagOf = (name) => FLAGS[name] || "";
 
@@ -1721,7 +1724,39 @@ function computeHomeStats(participants, showBonus) {
   return { total, championRanking, finalistRanking, leaderboard, norway: { advance, champions, deepest: deepestShown } };
 }
 
+const STADIUM_TIME_ZONES = {
+  Eastern: "America/New_York",
+  Central: "America/Chicago",
+  Western: "America/Los_Angeles",
+};
+
+function dateFromVenueTime(year, month, day, hour, minute, timeZone) {
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(utcGuess));
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+  const offset = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute) - utcGuess;
+  return new Date(utcGuess - offset);
+}
+
 function parseGameDate(g) {
+  if (g.kickoffAt) {
+    const scheduled = new Date(g.kickoffAt);
+    if (!isNaN(scheduled.getTime())) return scheduled;
+  }
+  // The live World Cup feed uses US-formatted local_date values such as
+  // "06/22/2026 20:00". Parse them explicitly instead of relying on the
+  // browser's non-standard Date string parsing.
+  const local = String(g.local_date || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (local) {
+    const [, month, day, year, hour, minute] = local;
+    const values = [Number(year), Number(month), Number(day), Number(hour), Number(minute)];
+    return g.timeZone
+      ? dateFromVenueTime(...values, g.timeZone)
+      : new Date(values[0], values[1] - 1, values[2], values[3], values[4]);
+  }
   const cands = [g.date_time, g.datetime, g.date_utc, g.utc_date, g.date, g.start, g.kickoff, g.time];
   for (const c of cands) { if (!c) continue; const d = new Date(c); if (!isNaN(d.getTime())) return d; }
   if (g.date && g.time) { const d = new Date(`${g.date} ${g.time}`); if (!isNaN(d.getTime())) return d; }
@@ -1738,6 +1773,47 @@ function formatCountdown(date) {
   return "om under en time";
 }
 
+const LIVE_GAMES_CACHE_KEY = "vm2026_live_games_v2";
+let liveGamesRequest = null;
+
+function readCachedLiveGames() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(LIVE_GAMES_CACHE_KEY) || "null");
+    return Array.isArray(cached?.games) ? cached.games : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadLiveGames() {
+  if (!liveGamesRequest) {
+    const gamesRequest = fetch("/.netlify/functions/wc?endpoint=games")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))));
+    const stadiumsRequest = fetch("/.netlify/functions/wc?endpoint=stadiums")
+      .then((res) => (res.ok ? res.json() : { stadiums: [] }))
+      .catch(() => ({ stadiums: [] }));
+
+    liveGamesRequest = Promise.all([gamesRequest, stadiumsRequest])
+      .then(([gamesData, stadiumsData]) => {
+        const timeZoneByStadium = Object.fromEntries((stadiumsData?.stadiums || []).map((stadium) => [
+          String(stadium.id), STADIUM_TIME_ZONES[stadium.region],
+        ]));
+        const games = (gamesData?.games || []).map((game) => {
+          const timeZone = timeZoneByStadium[String(game.stadium_id)];
+          const kickoffAt = parseGameDate({ ...game, timeZone })?.toISOString();
+          return { ...game, timeZone, kickoffAt };
+        });
+        try { localStorage.setItem(LIVE_GAMES_CACHE_KEY, JSON.stringify({ games, cachedAt: Date.now() })); } catch {}
+        return games;
+      })
+      .catch((error) => {
+        liveGamesRequest = null;
+        throw error;
+      });
+  }
+  return liveGamesRequest;
+}
+
 function pickNextNorwayGame(list) {
   const now = Date.now();
   const upcoming = (list || [])
@@ -1748,19 +1824,25 @@ function pickNextNorwayGame(list) {
   return upcoming[0] || null;
 }
 
+function pickUpcomingGames(list, limit = 3) {
+  const now = Date.now();
+  return (list || [])
+    .filter((game) => game.finished !== "TRUE")
+    .map((game) => ({ g: game, date: parseGameDate(game) }))
+    .filter((entry) => entry.date == null || entry.date.getTime() > now - 2.5 * 3600 * 1000)
+    .sort((a, b) => (a.date ? a.date.getTime() : Infinity) - (b.date ? b.date.getTime() : Infinity))
+    .slice(0, limit);
+}
+
 // Fetches the fixture list from the existing wc proxy and shows Norway's next
 // unplayed match. In local development it falls back to the shared sample
 // schedule, while production only displays live fixture data.
 function NorwayNextGame({ theme }) {
-  const [game, setGame] = useState(undefined);
+  const [game, setGame] = useState(() => pickNextNorwayGame(readCachedLiveGames() || DEV_SAMPLE_GAMES));
   useEffect(() => {
     let alive = true;
-    fetch("/.netlify/functions/wc?endpoint=games")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => {
-        if (!alive) return;
-        setGame(pickNextNorwayGame(data?.games));
-      })
+    loadLiveGames()
+      .then((games) => { if (alive) setGame(pickNextNorwayGame(games)); })
       .catch(() => { if (alive) setGame(DEV_SAMPLE_GAMES ? pickNextNorwayGame(DEV_SAMPLE_GAMES) : null); });
     return () => { alive = false; };
   }, []);
@@ -1798,7 +1880,7 @@ function NorwayNextGame({ theme }) {
           {TeamCol(flagOf(opp) || "🏳️", opp || "?")}
         </div>
         <div style={{ textAlign: "center", color: "var(--text2)", fontSize: 14, textTransform: "capitalize" }}>
-          {dateStr}{timeStr ? ` · ${timeStr}` : ""}
+          {dateStr}{timeStr ? ` · ${timeStr} norsk tid` : ""}
         </div>
         {date && <div style={{ textAlign: "center", marginTop: 8 }}><span style={HJ.countdownPill}>{formatCountdown(date)}</span></div>}
       </div>
@@ -1821,22 +1903,12 @@ const DEV_SAMPLE_GAMES = import.meta.env.DEV
 // Henter kampoppsettet fra wc-proxyen og viser de neste kampene som skal spilles.
 // Renderer ingenting ved feil/ingen kamper, på samme måte som Neste Norge-kamp.
 function UpcomingGames() {
-  const [games, setGames] = useState(undefined);
+  const [games, setGames] = useState(() => pickUpcomingGames(readCachedLiveGames() || DEV_SAMPLE_GAMES));
   useEffect(() => {
     let alive = true;
-    const pick = (list) => {
-      const now = Date.now();
-      return (list || [])
-        .filter((g) => g.finished !== "TRUE")
-        .map((g) => ({ g, date: parseGameDate(g) }))
-        .filter((x) => x.date == null || x.date.getTime() > now - 2.5 * 3600 * 1000)
-        .sort((a, b) => (a.date ? a.date.getTime() : Infinity) - (b.date ? b.date.getTime() : Infinity))
-        .slice(0, 3);
-    };
-    fetch("/.netlify/functions/wc?endpoint=games")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => { if (alive) setGames(pick(data?.games)); })
-      .catch(() => { if (alive) setGames(DEV_SAMPLE_GAMES ? pick(DEV_SAMPLE_GAMES) : null); });
+    loadLiveGames()
+      .then((liveGames) => { if (alive) setGames(pickUpcomingGames(liveGames)); })
+      .catch(() => { if (alive) setGames(DEV_SAMPLE_GAMES ? pickUpcomingGames(DEV_SAMPLE_GAMES) : null); });
     return () => { alive = false; };
   }, []);
 
@@ -1848,7 +1920,7 @@ function UpcomingGames() {
     const away = toNorwegian(G.away_team_name_en || "");
     const isNorway = home === "Norge" || away === "Norge";
     const when = x.date
-      ? `${x.date.toLocaleDateString("nb-NO", { weekday: "short", day: "numeric", month: "short" })} · ${x.date.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}`
+      ? `${x.date.toLocaleDateString("nb-NO", { weekday: "short", day: "numeric", month: "short" })} · ${x.date.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })} norsk tid`
       : "Tidspunkt kommer";
     return (
       <div style={{
@@ -2059,33 +2131,64 @@ const NORGE_VM_STOPS = [
   },
 ];
 
-// World Cup nodes: 3 group matches plus potential knockout rounds. Group results
-// are seeded to be consistent with the in-app date (group 3 still upcoming).
-// Knockout rounds are added to the voyage only after Norway's opponent or result is known.
-const VM_NODES = [
-  { id: "vm-g1", phase: "vm", kind: "group", round: "Gruppespill", date: "14. juni 2026", opponent: "Mexico", oppCode: "MX", kickoff: "2026-06-14T19:00:00", score: "2–1", result: "W" },
-  { id: "vm-g2", phase: "vm", kind: "group", round: "Gruppespill", date: "20. juni 2026", opponent: "Sør-Korea", oppCode: "KR", kickoff: "2026-06-20T19:00:00", score: "1–1", result: "D" },
-  { id: "vm-g3", phase: "vm", kind: "group", round: "Gruppespill", date: "25. juni 2026", opponent: "Marokko", oppCode: "MA", kickoff: "2026-06-25T19:00:00", score: null, result: null },
-  { id: "vm-r32", phase: "vm", kind: "knockout", round: "16-delsfinale", date: "Sluttspill", opponent: null, oppCode: null, kickoff: null, score: null, result: null },
-  { id: "vm-r16", phase: "vm", kind: "knockout", round: "8-delsfinale", date: "Sluttspill", opponent: null, oppCode: null, kickoff: null, score: null, result: null },
-  { id: "vm-qf", phase: "vm", kind: "knockout", round: "Kvartfinale", date: "Sluttspill", opponent: null, oppCode: null, kickoff: null, score: null, result: null },
-  { id: "vm-sf", phase: "vm", kind: "knockout", round: "Semifinale", date: "Sluttspill", opponent: null, oppCode: null, kickoff: null, score: null, result: null },
-  { id: "vm-final", phase: "vm", kind: "knockout", round: "Finale", date: "Sluttspill", opponent: null, oppCode: null, kickoff: null, score: null, result: null },
-];
-
-const VOYAGE_NODES = [
+const VOYAGE_CORE_NODES = [
   ...NORGE_VM_STOPS.map((s) => ({ ...s, phase: "kval" })),
   {
     id: "ankomst", phase: "arrival", date: "Juni 2026", title: "Norge har landet i USA",
     body: "Ferden over Atlanteren er fullført. Norge har gått i land i Amerika, og VM 2026 kan endelig begynne.",
     image: roadVmArrived,
   },
-  ...VM_NODES.filter((node) => node.kind !== "knockout" || Boolean(node.opponent || node.score)),
 ];
 
 // ISO 3166 alpha-2 → flag emoji (regional indicators)
 const codeToFlag = (cc) =>
   cc ? cc.toUpperCase().replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0))) : "";
+
+const knockoutRound = (id) => {
+  const gameId = Number(id);
+  if (gameId >= 73 && gameId <= 88) return "16-delsfinale";
+  if (gameId >= 89 && gameId <= 96) return "8-delsfinale";
+  if (gameId >= 97 && gameId <= 100) return "Kvartfinale";
+  if (gameId >= 101 && gameId <= 102) return "Semifinale";
+  if (gameId === 103) return "Bronsefinale";
+  if (gameId === 104) return "Finale";
+  return "Sluttspill";
+};
+
+function gameToVoyageNode(game) {
+  const norwayHome = game.home_team_name_en === "Norway";
+  const opponent = toNorwegian(norwayHome ? game.away_team_name_en : game.home_team_name_en);
+  const kickoff = parseGameDate(game);
+  const finished = String(game.finished).toUpperCase() === "TRUE";
+  const homeScore = Number(game.home_score);
+  const awayScore = Number(game.away_score);
+  const hasScore = finished && game.home_score !== "" && game.away_score !== "" && Number.isFinite(homeScore) && Number.isFinite(awayScore);
+  const norwayScore = norwayHome ? homeScore : awayScore;
+  const opponentScore = norwayHome ? awayScore : homeScore;
+  const result = !hasScore ? null : norwayScore > opponentScore ? "W" : norwayScore < opponentScore ? "L" : "D";
+  const kind = game.type === "group" ? "group" : "knockout";
+
+  return {
+    id: `vm-${game.id}`,
+    phase: "vm",
+    kind,
+    round: kind === "group" ? "Gruppespill" : knockoutRound(game.id),
+    date: kickoff ? kickoff.toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" }) : "Tidspunkt kommer",
+    opponent,
+    oppCode: null,
+    kickoff: kickoff ? kickoff.toISOString() : null,
+    score: hasScore ? `${norwayScore}–${opponentScore}` : null,
+    result,
+  };
+}
+
+function liveVoyageNodes(games) {
+  return (games || [])
+    .filter((game) => game.home_team_name_en === "Norway" || game.away_team_name_en === "Norway")
+    .map((game) => ({ node: gameToVoyageNode(game), kickoff: parseGameDate(game), id: Number(game.id) || Infinity }))
+    .sort((a, b) => (a.kickoff?.getTime() ?? Infinity) - (b.kickoff?.getTime() ?? Infinity) || a.id - b.id)
+    .map(({ node }) => node);
+}
 
 // Catmull-Rom spline through points → one smooth cubic-bezier path string
 function smoothPath(pts) {
@@ -2142,7 +2245,9 @@ function NorgesVeiTilVM() {
   const AMP = isMobile ? 13 : 44;
   const CX = LANE_W / 2;
   const GAP = isMobile ? 12 : 18;
-  const hasConfirmedFinal = VOYAGE_NODES.some((node) => node.id === "vm-final");
+  const [vmNodes, setVmNodes] = useState(() => liveVoyageNodes(readCachedLiveGames() || DEV_SAMPLE_GAMES));
+  const voyageNodes = [...VOYAGE_CORE_NODES, ...vmNodes];
+  const hasConfirmedFinal = voyageNodes.some((node) => node.round === "Finale" && node.kind === "knockout");
 
   const containerRef = useRef(null);
   const cardRefs = useRef([]);
@@ -2155,6 +2260,14 @@ function NorgesVeiTilVM() {
   const [activeIdx, setActiveIdx] = useState(0);
   const geoRef = useRef(geo);
   geoRef.current = geo;
+
+  useEffect(() => {
+    let alive = true;
+    loadLiveGames()
+      .then((games) => { if (alive) setVmNodes(liveVoyageNodes(games)); })
+      .catch(() => { if (alive) setVmNodes(liveVoyageNodes(DEV_SAMPLE_GAMES)); });
+    return () => { alive = false; };
+  }, []);
 
   // Re-place the ship and green fill from the current scroll position.
   function update() {
@@ -2218,7 +2331,7 @@ function NorgesVeiTilVM() {
     if (containerRef.current) ro.observe(containerRef.current);
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  }, [isMobile, CX, AMP]);
+  }, [isMobile, CX, AMP, vmNodes.length]);
 
   // Build a length→point lookup table from the rendered path (before paint, no flash).
   useLayoutEffect(() => {
@@ -2276,7 +2389,7 @@ function NorgesVeiTilVM() {
             <path ref={fillRef} d={geo.pathD} fill="none" stroke="#45D17F" strokeWidth="3.2" strokeLinecap="round" />
           </g>}
           {geo.nodes.map((n) => {
-            const node = VOYAGE_NODES[n.i];
+            const node = voyageNodes[n.i];
             const done = nodeIsDone(node);
             const gold = node.kind === "knockout" || node.phase === "arrival";
             const ring = gold ? "#C7A75D" : done ? "#45D17F" : "#7E9BC6";
@@ -2300,7 +2413,7 @@ function NorgesVeiTilVM() {
         </svg>
 
         <div style={{ marginLeft: LANE_W + GAP }}>
-          {VOYAGE_NODES.map((node, i) => (
+          {voyageNodes.map((node, i) => (
             <div key={node.id} ref={(el) => (cardRefs.current[i] = el)} style={{ padding: isMobile ? "9px 0" : "13px 0" }}>
               <VoyageCard node={node} active={i === activeIdx} isMobile={isMobile} imageOnRight={i % 2 === 1} />
             </div>
@@ -2369,7 +2482,7 @@ function VoyageCard({ node, active, isMobile, imageOnRight }) {
     ? "Motstander og kampdato fastsettes etter gruppespillet."
     : upcomingFixture
       ? kickoff
-        ? `${kickoff.toLocaleDateString("nb-NO", { weekday: "long", day: "numeric", month: "long" })} · ${kickoff.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}`
+        ? `${kickoff.toLocaleDateString("nb-NO", { weekday: "long", day: "numeric", month: "long" })} · ${kickoff.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })} norsk tid`
         : "Tidspunktet er ikke fastsatt ennå."
       : node.result === "W" ? "En sterk start på VM-reisen." : node.result === "D" ? "Alt er fortsatt åpent i gruppa." : "Norge må slå tilbake i neste kamp.";
   const panelColor = placeholder ? "#C7A75D" : upcomingFixture ? "var(--accent)" : resColor;
@@ -2399,7 +2512,7 @@ function VoyageCard({ node, active, isMobile, imageOnRight }) {
                 {played ? node.score : "vs"}
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 800, color: "var(--text1)" }}>
-                {node.opponent} <span style={{ fontSize: 19 }}>{codeToFlag(node.oppCode)}</span>
+                {node.opponent} <span style={{ fontSize: 19 }}>{flagOf(node.opponent) || codeToFlag(node.oppCode) || "🏳️"}</span>
               </span>
             </div>
           )}
