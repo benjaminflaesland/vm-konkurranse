@@ -3,3 +3,7 @@ dist
 .env
 .env.local
 .vercel
+.DS_Store
+.claude/
+.superpowers/
+docs/superpowers/
