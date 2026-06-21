@@ -274,23 +274,29 @@ const CODES = {
 const codeOf = (name) => CODES[name] || (name ? name.slice(0, 3).toUpperCase() : "");
 
 // FotMob-style group "table" row block: qualification bar + position + flag + name.
+// Skeleton placeholders for slots that aren't decided yet (nicer than a bare "—").
+const SkelDot = ({ s = 11 }) => <span aria-hidden="true" style={{ display: "inline-block", width: s, height: s, borderRadius: "50%", background: "var(--text5)", verticalAlign: "middle" }} />;
+const SkelBar = ({ w = 52 }) => <span aria-hidden="true" style={{ display: "inline-block", width: w, maxWidth: "78%", height: 8, borderRadius: 4, background: "var(--text5)", verticalAlign: "middle" }} />;
+
 function GroupTableCard({ g, first, second, compact }) {
   const teams = [first, second];
   return (
     <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: compact ? 9 : 12, overflow: "hidden" }}>
       <div style={{ padding: compact ? "2px 7px" : "10px 14px", fontSize: compact ? 9.5 : 12, fontWeight: 800, color: "var(--text3)",
         textTransform: "uppercase", letterSpacing: compact ? 0.5 : 1, borderBottom: "1px solid var(--border)" }}>{compact ? g : `Gruppe ${g}`}</div>
-      {teams.map((team, i) => team ? (
+      {teams.map((team, i) => (
         <div key={i} style={{ display: "flex", alignItems: "stretch",
-          borderBottom: i === 0 && second ? "1px solid var(--bg2)" : "none" }}>
-          <div style={{ width: compact ? 3 : 4, background: "#22C55E", flexShrink: 0 }} />
+          borderBottom: i === 0 ? "1px solid var(--bg2)" : "none" }}>
+          <div style={{ width: compact ? 3 : 4, background: team ? "#22C55E" : "var(--border)", flexShrink: 0 }} />
           <div style={{ display: "flex", alignItems: "center", gap: compact ? 5 : 11, padding: compact ? "3px 6px" : "11px 14px", flex: 1, minWidth: 0 }}>
             {!compact && <span style={{ width: 16, textAlign: "center", fontSize: 14, fontWeight: 700, color: "var(--text3)", flexShrink: 0 }}>{i + 1}</span>}
-            <span style={{ fontSize: compact ? 13 : 18, flexShrink: 0 }}>{flagOf(team)}</span>
-            <span style={{ fontSize: compact ? 12 : 15, fontWeight: 700, letterSpacing: compact ? 0.3 : 0, color: "var(--text1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compact ? codeOf(team) : team}</span>
+            <span style={{ fontSize: compact ? 13 : 18, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: compact ? 11 : 16 }}>{team ? flagOf(team) : <SkelDot s={compact ? 9 : 12} />}</span>
+            {team
+              ? <span style={{ fontSize: compact ? 12 : 15, fontWeight: 700, letterSpacing: compact ? 0.3 : 0, color: "var(--text1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compact ? codeOf(team) : team}</span>
+              : <SkelBar w={compact ? 24 : 52} />}
           </div>
         </div>
-      ) : null)}
+      ))}
     </div>
   );
 }
@@ -376,11 +382,10 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH }}>
-        <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{flagOf(name)}</span>
-        <span style={{
-          fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          color: name ? "var(--text1)" : "var(--text4)",
-        }}>{name || "—"}</span>
+        <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? flagOf(name) : <SkelDot />}</span>
+        {name
+          ? <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{name}</span>
+          : <SkelBar w={58} />}
       </div>
     </>
   );
@@ -449,10 +454,9 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
         <div style={{ position: "absolute", left: centerX, top: 6, width: CW, textAlign: "center" }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase", marginBottom: 4 }}>Mester</div>
           <TrophyIcon size={34} />
-          <div style={{
-            marginTop: 4, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            color: finale ? "var(--accent)" : "var(--text4)",
-          }}>{finale || "—"}</div>
+          {finale
+            ? <div style={{ marginTop: 4, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--accent)" }}>{finale}</div>
+            : <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}><SkelBar w={64} /></div>}
         </div>
 
         {/* Final */}
@@ -471,11 +475,10 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
             display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH,
             background: "var(--bg4)", borderRadius: 10, border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
           }}>
-            <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{flagOf(bronse)}</span>
-            <span style={{
-              fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              color: bronse ? "var(--text1)" : "var(--text4)",
-            }}>{bronse || "—"}</span>
+            <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{bronse ? flagOf(bronse) : <SkelDot />}</span>
+            {bronse
+              ? <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{bronse}</span>
+              : <SkelBar w={58} />}
           </div>
         </div>
       </div>
@@ -512,12 +515,10 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 7px", height: RH }}>
-        <span style={{ fontSize: 12, width: 16, textAlign: "center", flexShrink: 0 }}>{flagOf(name)}</span>
-        <span style={{
-          flex: 1, minWidth: 0, fontSize: useCode ? 11 : 11.5, fontWeight: 700,
-          letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          color: name ? "var(--text1)" : "var(--text4)",
-        }}>{teamText(name)}</span>
+        <span style={{ fontSize: 12, width: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? flagOf(name) : <SkelDot s={9} />}</span>
+        {name
+          ? <span style={{ flex: 1, minWidth: 0, fontSize: useCode ? 11 : 11.5, fontWeight: 700, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{teamText(name)}</span>
+          : <span style={{ flex: 1, minWidth: 0 }}><SkelBar w={38} /></span>}
       </div>
     </>
   );
@@ -587,11 +588,9 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
           <div style={{ textAlign: "center", width: CW }}>
             <TrophyIcon size={26} />
             <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase", marginTop: 2 }}>Mester</div>
-            <div style={{
-              fontSize: 13, fontWeight: 800, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap",
-              overflow: "hidden", textOverflow: "ellipsis",
-              color: finale ? "var(--accent)" : "var(--text4)",
-            }}>{teamText(finale)}</div>
+            {finale
+              ? <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--accent)" }}>{teamText(finale)}</div>
+              : <div style={{ marginTop: 5, display: "flex", justifyContent: "center" }}><SkelBar w={44} /></div>}
           </div>
         </div>
 
@@ -884,18 +883,25 @@ async function fetchResultsFromAPI() {
     teamMap[String(t.id)] = toNorwegian(t.name_en);
   }
 
-  // Gruppe-standings
+  // Gruppe-standings (poeng → målforskjell → scorede mål)
+  const cmpStandings = (a, b) =>
+    (parseInt(b.pts) || 0) - (parseInt(a.pts) || 0) ||
+    (parseInt(b.gd) || 0) - (parseInt(a.gd) || 0) ||
+    (parseInt(b.gf) || 0) - (parseInt(a.gf) || 0);
+  const thirdPlaced = [];
   for (const g of (groupsData?.groups || [])) {
     const letter = (g.name || "").toUpperCase();
     if (!GROUP_KEYS.includes(letter)) continue;
-    const teams = [...(g.teams || [])].sort((a, b) =>
-      (parseInt(b.pts) || 0) - (parseInt(a.pts) || 0) ||
-      (parseInt(b.gd) || 0) - (parseInt(a.gd) || 0) ||
-      (parseInt(b.gf) || 0) - (parseInt(a.gf) || 0)
-    );
+    const teams = [...(g.teams || [])].sort(cmpStandings);
     if (teams[0]) result.groups[letter].first = teamMap[teams[0].team_id] || "";
     if (teams[1]) result.groups[letter].second = teamMap[teams[1].team_id] || "";
+    if (teams[2]) thirdPlaced.push(teams[2]); // gruppas treer
   }
+
+  // Beste treere: de 8 beste treerne på tvers av gruppene (samme rangering).
+  // Rekkefølge er irrelevant for poeng, men vi fyller dem inn automatisk.
+  result.thirds = thirdPlaced.sort(cmpStandings).slice(0, 8).map((t) => teamMap[t.team_id] || "");
+  while (result.thirds.length < 8) result.thirds.push("");
 
   // Kampresultater (kun hvis games-endepunktet svarte)
   if (gamesRes?.ok) {
@@ -2565,63 +2571,62 @@ function FasitView({ fasit, showBonus, theme }) {
 
   return (
     <div style={S.adminWrap}>
-      {!anyGroupData && !anyMatchData ? (
-        <div style={S.empty}>Resultatet er ikke lagt inn ennå.</div>
-      ) : (
-        <>
-          {anyGroupData && (
-            <div style={secStyle}>
-              <div style={{ marginBottom: 12 }}><PatternSectionLabel theme={theme}>Gruppespill</PatternSectionLabel></div>
-              <div style={isMobile ? { ...S.fasitGrid, gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: 6 } : S.fasitGrid}>
-                {GROUP_KEYS.map((g) => {
-                  const { first, second } = fasit.groups[g];
-                  if (!first && !second) return null;
-                  return <GroupTableCard key={g} g={g} first={first} second={second} compact={isMobile} />;
-                })}
+      <div style={secStyle}>
+        <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <PatternSectionLabel theme={theme}>Gruppespill</PatternSectionLabel>
+          {!anyGroupData && (
+            <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>Ikke spilt ennå — fylles ut underveis.</span>
+          )}
+        </div>
+        <div style={isMobile ? { ...S.fasitGrid, gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: 6 } : S.fasitGrid}>
+          {GROUP_KEYS.map((g) => {
+            const { first, second } = fasit.groups[g];
+            return <GroupTableCard key={g} g={g} first={first} second={second} compact={isMobile} />;
+          })}
+        </div>
+      </div>
+
+      <div style={secStyle}>
+        <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <PatternSectionLabel theme={theme}>Sluttspill</PatternSectionLabel>
+          {!anyMatchData && (
+            <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>Ikke spilt ennå — brakettene fylles ut underveis.</span>
+          )}
+        </div>
+        {narrowBracket
+          ? <VerticalBracket
+              getSlot={id => fasit.matches?.[id] ?? null}
+              getBronse={() => fasit.bronse}
+              getFinale={() => fasit.finale} />
+          : renderBracketHorizontal({
+              getSlot: id => fasit.matches?.[id] ?? null,
+              getBronse: () => fasit.bronse,
+              getFinale: () => fasit.finale,
+            })}
+      </div>
+
+      {showBonus && fasit.quiz.some(Boolean) && (
+        <div style={secStyle}>
+          <div style={S.fasitSectionTitle}>VM-quiz resultat</div>
+          {QUIZ_QUESTIONS.map((q, i) =>
+            fasit.quiz[i] ? (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 9 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 12.5 : 13, fontWeight: 700, color: "var(--text3)", lineHeight: 1.4 }}>
+                  {i + 1}. {q}
+                </span>
+                <span style={{ fontWeight: 700, color: "var(--accent)", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0, fontSize: isMobile ? 12.5 : 14 }}>
+                  {fasit.quiz[i]}
+                </span>
               </div>
-            </div>
+            ) : null
           )}
-
-          {anyMatchData && (
-            <div style={secStyle}>
-              <div style={{ marginBottom: 12 }}><PatternSectionLabel theme={theme}>Sluttspill</PatternSectionLabel></div>
-              {narrowBracket
-                ? <VerticalBracket
-                    getSlot={id => fasit.matches?.[id] ?? null}
-                    getBronse={() => fasit.bronse}
-                    getFinale={() => fasit.finale} />
-                : renderBracketHorizontal({
-                    getSlot: id => fasit.matches?.[id] ?? null,
-                    getBronse: () => fasit.bronse,
-                    getFinale: () => fasit.finale,
-                  })}
-            </div>
-          )}
-
-          {showBonus && fasit.quiz.some(Boolean) && (
-            <div style={secStyle}>
-              <div style={S.fasitSectionTitle}>VM-quiz resultat</div>
-              {QUIZ_QUESTIONS.map((q, i) =>
-                fasit.quiz[i] ? (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 9 }}>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 12.5 : 13, fontWeight: 700, color: "var(--text3)", lineHeight: 1.4 }}>
-                      {i + 1}. {q}
-                    </span>
-                    <span style={{ fontWeight: 700, color: "var(--accent)", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0, fontSize: isMobile ? 12.5 : 14 }}>
-                      {fasit.quiz[i]}
-                    </span>
-                  </div>
-                ) : null
-              )}
-            </div>
-          )}
-          {!showBonus && (
-            <div style={{ ...secStyle, display: "flex", alignItems: "center", gap: 10, color: "var(--text3)", fontSize: 13.5, lineHeight: 1.5 }}>
-              <span style={{ color: "#D8B15A", flexShrink: 0 }}><LockIcon size={17} /></span>
-              VM-quiz og bonusspørsmål avsløres under kåringen.
-            </div>
-          )}
-        </>
+        </div>
+      )}
+      {!showBonus && (
+        <div style={{ ...secStyle, display: "flex", alignItems: "center", gap: 10, color: "var(--text3)", fontSize: 13.5, lineHeight: 1.5 }}>
+          <span style={{ color: "#D8B15A", flexShrink: 0 }}><LockIcon size={17} /></span>
+          VM-quiz og bonusspørsmål avsløres under kåringen.
+        </div>
       )}
     </div>
   );
@@ -2703,13 +2708,23 @@ function Fasit({ fasit, setFasit }) {
       <div style={S.importCard}>
         <div style={S.importTitle}>Live VM-resultater</div>
         <div style={S.importDesc}>
-          Henter live gruppe-standings og kampresultater direkte fra <b>worldcup26.ir</b> (gratis, ingen nøkkel).
+          Henter live gruppe-standings, beste treere og kampresultater direkte fra <b>worldcup26.ir</b> (gratis, ingen nøkkel).
           Viser <b>midlertidig stilling</b> selv om gruppen ikke er ferdigspilt.
           Trykk på nytt etter hver kampdag for å oppdatere. Quiz-resultat fylles inn manuelt.
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={runAI} disabled={aiState === "loading"} style={S.calcBtn}>
             {aiState === "loading" ? "Henter …" : "🔄 Oppdater resultater"}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm("Tøm alle resultater? Dette nullstiller gruppespill, beste treere og hele sluttspillet. Quiz-svar beholdes.")) {
+                setFasit({ ...emptyFasit(), quiz: fasit.quiz });
+                setAiState(""); setAiMsg("");
+              }
+            }}
+            style={{ ...S.calcBtn, background: "transparent", color: "#E8334A", border: "1px solid rgba(232,51,74,0.4)" }}>
+            🗑 Tøm resultater
           </button>
           {aiMsg && (
             <span style={{ ...S.importMsg, color: aiState === "error" ? "#E8334A" : "var(--accent)" }}>

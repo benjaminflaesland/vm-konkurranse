@@ -1,4 +1,4 @@
-import { getStore } from "@netlify/blobs";
+import { connectLambda, getStore } from "@netlify/blobs";
 
 const BLOB_KEY = "competition-data";
 
@@ -41,6 +41,9 @@ function publicData(data) {
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: HEADERS, body: "" };
 
+  // Lambda-compatible functions must wire up Blobs credentials from the event
+  // before getStore(); without this Netlify Blobs throws MissingBlobsEnvironmentError.
+  connectLambda(event);
   const store = getStore("vm2026");
   const auth = (event.headers.authorization || event.headers.Authorization) || "";
   const password = auth.replace("Bearer ", "");
