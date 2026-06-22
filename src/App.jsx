@@ -314,7 +314,13 @@ const FLAG_NAME_ALIASES = {
 
 const canonicalFlagName = (name) => {
   const cleanName = String(name || "").replace(/\u00a0/g, " ").trim();
-  return FLAG_NAME_ALIASES[norm(cleanName)] || cleanName;
+  const alias = FLAG_NAME_ALIASES[norm(cleanName)];
+  if (alias) return alias;
+  // Fall back to the canonical team name so Excel spelling variants
+  // ("Bosnia and Herzegovina", "Bosnia & Herzegovina", \u2026) still find their flag.
+  const canon = canonicalTeam(cleanName);
+  if (FLAG_CODES[canon]) return canon;
+  return cleanName;
 };
 
 function Flag({ name, code, size = 18 }) {
@@ -325,6 +331,7 @@ function Flag({ name, code, size = 18 }) {
     <span role="img" aria-label={countryName ? `${countryName} flagg` : "Flagg"} style={{
       display: "inline-grid", placeItems: "center", width: size, height: Math.round(size * 0.72),
       verticalAlign: "middle", lineHeight: 1, overflow: "hidden", borderRadius: Math.max(1, Math.round(size / 10)),
+      boxSizing: "border-box", border: "0.5px solid color-mix(in srgb, var(--text1) 16%, transparent)",
       background: "var(--bg2)", color: "var(--text3)", fontSize: Math.max(7, Math.round(size * 0.42)), fontWeight: 800,
     }}>
       <span aria-hidden="true" style={{ gridArea: "1 / 1", letterSpacing: 0.2 }}>{fallback}</span>
