@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
-import * as XLSX from "xlsx";
 import vmTrophyMark from "./assets/vm-trophy-mark-26-header.png";
 import norseKnitBand from "./assets/norse-knit-band.png";
 import norseKnitBandLight from "./assets/norse-knit-band-light.png";
@@ -92,6 +91,9 @@ const PALETTE = [
 ];
 
 const STORAGE_KEY = "vm2026_ranking_data_v2";
+const PUBLIC_CACHE_KEY = "vm2026_public_cache_v1";
+const LAST_PUBLIC_MODE_KEY = "vm2026_last_public_mode";
+const PUBLIC_MODES = new Set(["hjem", "stilling", "fasit-view", "vei-vm", "present"]);
 const DEFAULT_CEREMONY = { phase: "rounds", step: 0, bonusRevealed: 0 };
 const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremony: DEFAULT_CEREMONY };
 
@@ -151,7 +153,7 @@ const DEMO_DATA = import.meta.env.DEV ? (() => {
 
 async function saveData(data, adminPassword) {
   const payload = { ...data, updatedAt: new Date().toISOString() };
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch {}
+  writeLocalData(payload, true);
   if (!adminPassword) throw new Error("Mangler admin-tilgang for lagring");
 
   const res = await fetch("/.netlify/functions/data", {
@@ -168,12 +170,21 @@ async function saveData(data, adminPassword) {
   }
 }
 
-async function loadData(adminPassword) {
-  let localData = null;
+function readLocalData(adminPassword) {
   try {
-    const cached = localStorage.getItem(STORAGE_KEY);
-    localData = cached ? JSON.parse(cached) : null;
-  } catch {}
+    const cached = localStorage.getItem(adminPassword ? STORAGE_KEY : PUBLIC_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalData(data, adminPassword) {
+  try { localStorage.setItem(adminPassword ? STORAGE_KEY : PUBLIC_CACHE_KEY, JSON.stringify(data)); } catch {}
+}
+
+async function loadData(adminPassword) {
+  const localData = readLocalData(adminPassword);
 
   try {
     const res = await fetch("/.netlify/functions/data", adminPassword
@@ -187,6 +198,9 @@ async function loadData(adminPassword) {
         if (adminPassword && localData?.updatedAt && (!d.updatedAt || localData.updatedAt > d.updatedAt)) {
           return localData;
         }
+        // Public visitors can paint this saved copy immediately next time, then
+        // refresh it quietly in the background.
+        writeLocalData(d, adminPassword);
         return d;
       }
     }
@@ -261,6 +275,40 @@ const FLAGS = {
 };
 const flagOf = (name) => FLAGS[name] || "";
 
+// Emoji flags are not consistently supported on every operating system. Keep the
+// emoji as a tiny fallback, but render a real flag image when one is available.
+// The ISO code remains visible until the image is ready (or if the CDN is blocked),
+// so a flag never becomes an empty gap on a new device.
+const FLAG_CODES = {
+  "Mexico": "mx", "USA": "us", "Canada": "ca", "Sveits": "ch", "Brasil": "br",
+  "Marokko": "ma", "Australia": "au", "Tyskland": "de", "Elfenbenskysten": "ci", "Haiti": "ht",
+  "Nederland": "nl", "Japan": "jp", "Belgia": "be", "Iran": "ir", "Spania": "es", "Ecuador": "ec",
+  "Uruguay": "uy", "Frankrike": "fr", "Norge": "no", "Argentina": "ar", "Paraguay": "py",
+  "Østerrike": "at", "Portugal": "pt", "Colombia": "co", "England": "gb-eng", "Kroatia": "hr",
+  "Panama": "pa", "Bolivia": "bo", "Kosovo": "xk", "Senegal": "sn", "Irak": "iq",
+  "Sør-Korea": "kr", "Sør Korea": "kr", "Sør-Afrika": "za", "Sør Afrika": "za", "Qatar": "qa", "Tsjekkia": "cz",
+  "New Zealand": "nz", "Egypt": "eg", "Kapp Verde": "cv", "Saudi Arabia": "sa", "Sverige": "se", "Tunisia": "tn",
+  "Bosnia og Herzegovina": "ba", "Skottland": "gb-sct", "Tyrkia": "tr", "Curacao": "cw", "Curaçao": "cw",
+  "Algerie": "dz", "Jordan": "jo", "Kongo": "cd", "Uzbekistan": "uz", "Ghana": "gh",
+};
+
+function Flag({ name, code, size = 18 }) {
+  const countryCode = FLAG_CODES[name] || code?.toLowerCase();
+  const fallback = countryCode ? countryCode.toUpperCase() : flagOf(name) || "?";
+  return (
+    <span role="img" aria-label={name ? `${name} flagg` : "Flagg"} style={{
+      display: "inline-grid", placeItems: "center", width: size, height: Math.round(size * 0.72),
+      verticalAlign: "middle", lineHeight: 1, overflow: "hidden", borderRadius: Math.max(1, Math.round(size / 10)),
+      background: "var(--bg2)", color: "var(--text3)", fontSize: Math.max(7, Math.round(size * 0.42)), fontWeight: 800,
+    }}>
+      <span aria-hidden="true" style={{ gridArea: "1 / 1", letterSpacing: 0.2 }}>{fallback}</span>
+      {countryCode && <img src={`/flags/${countryCode}.svg`} alt="" loading={size >= 24 ? "eager" : "lazy"} decoding="async" style={{
+        gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1,
+      }} />}
+    </span>
+  );
+}
+
 // FIFA 3-letter codes — used in the compact mobile bracket where full names won't fit.
 const CODES = {
   "Mexico": "MEX", "USA": "USA", "Canada": "CAN", "Sveits": "SUI", "Brasil": "BRA",
@@ -290,7 +338,7 @@ function GroupTableCard({ g, first, second, compact }) {
           <div style={{ width: compact ? 3 : 4, background: team ? "#22C55E" : "var(--border)", flexShrink: 0 }} />
           <div style={{ display: "flex", alignItems: "center", gap: compact ? 5 : 11, padding: compact ? "3px 6px" : "11px 14px", flex: 1, minWidth: 0 }}>
             {!compact && <span style={{ width: 16, textAlign: "center", fontSize: 14, fontWeight: 700, color: "var(--text3)", flexShrink: 0 }}>{i + 1}</span>}
-            <span style={{ fontSize: compact ? 13 : 18, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: compact ? 11 : 16 }}>{team ? flagOf(team) : <SkelDot s={compact ? 9 : 12} />}</span>
+            <span style={{ fontSize: compact ? 13 : 18, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: compact ? 11 : 16 }}>{team ? <Flag name={team} size={compact ? 13 : 18} /> : <SkelDot s={compact ? 9 : 12} />}</span>
             {team
               ? <span style={{ fontSize: compact ? 12 : 15, fontWeight: 700, letterSpacing: compact ? 0.3 : 0, color: "var(--text1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compact ? codeOf(team) : team}</span>
               : <SkelBar w={compact ? 24 : 52} />}
@@ -382,7 +430,7 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH }}>
-        <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? flagOf(name) : <SkelDot />}</span>
+        <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={15} /> : <SkelDot />}</span>
         {name
           ? <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{name}</span>
           : <SkelBar w={58} />}
@@ -475,7 +523,7 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
             display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH,
             background: "var(--bg4)", borderRadius: 10, border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
           }}>
-            <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{bronse ? flagOf(bronse) : <SkelDot />}</span>
+            <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{bronse ? <Flag name={bronse} size={15} /> : <SkelDot />}</span>
             {bronse
               ? <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{bronse}</span>
               : <SkelBar w={58} />}
@@ -515,7 +563,7 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 7px", height: RH }}>
-        <span style={{ fontSize: 12, width: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? flagOf(name) : <SkelDot s={9} />}</span>
+        <span style={{ fontSize: 12, width: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={12} /> : <SkelDot s={9} />}</span>
         {name
           ? <span style={{ flex: 1, minWidth: 0, fontSize: useCode ? 11 : 11.5, fontWeight: 700, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{teamText(name)}</span>
           : <span style={{ flex: 1, minWidth: 0 }}><SkelBar w={38} /></span>}
@@ -864,12 +912,14 @@ function toNorwegian(name) {
 
 async function fetchResultsFromAPI() {
   const BASE = "/.netlify/functions/wc?endpoint=";
+  const liveEndpoint = (name) => `${BASE}${name}&refresh=1`;
 
-  // Hent teams og groups parallelt; games er valgfritt (kan time ut)
+  // Admin refresh deliberately bypasses the shared cache; the public homepage
+  // uses the cached response for speed and resilience.
   const [teamsRes, groupsRes, gamesRes] = await Promise.all([
-    fetch(`${BASE}teams`),
-    fetch(`${BASE}groups`),
-    fetch(`${BASE}games`).catch(() => null),
+    fetch(liveEndpoint("teams")),
+    fetch(liveEndpoint("groups")),
+    fetch(liveEndpoint("games")).catch(() => null),
   ]);
   if (!teamsRes.ok || !groupsRes.ok) throw new Error("API utilgjengelig");
 
@@ -937,7 +987,14 @@ export default function App() {
   const [fasit, setFasit] = useState(emptyFasit());
   const [settings, setSettings] = useState(() => normalizeSettings());
   const [adminPreviewCeremony, setAdminPreviewCeremony] = useState(() => normalizeCeremony());
-  const [mode, setMode] = useState("hjem");
+  const [mode, setMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LAST_PUBLIC_MODE_KEY);
+      return PUBLIC_MODES.has(saved) ? saved : "hjem";
+    } catch {
+      return "hjem";
+    }
+  });
   const [loaded, setLoaded] = useState(false);
   const isMobile = useIsMobile();
   const [isAdmin, setIsAdmin] = useState(() =>
@@ -953,6 +1010,21 @@ export default function App() {
   const saveQueueRef = useRef(Promise.resolve());
   const saveVersionRef = useRef(0);
   const [saveStatus, setSaveStatus] = useState({ state: "idle", message: "" });
+
+  // Mobile browsers reveal the document behind the app while rubber-banding at
+  // the bottom. Keep that surface in sync with the selected site theme.
+  useEffect(() => {
+    const pageBackground = theme === "light" ? "#FAF0EE" : "#000000";
+    document.documentElement.style.backgroundColor = pageBackground;
+    document.body.style.backgroundColor = pageBackground;
+  }, [theme]);
+
+  useEffect(() => {
+    // Restore public navigation after refresh, but never reopen an admin-only
+    // view for a visitor whose admin session has ended.
+    if (!PUBLIC_MODES.has(mode)) return;
+    try { localStorage.setItem(LAST_PUBLIC_MODE_KEY, mode); } catch {}
+  }, [mode]);
 
   useEffect(() => {
     if (DEMO_DATA) {
@@ -972,6 +1044,12 @@ export default function App() {
       setLoaded(true);
       return;
     }
+    const cached = readLocalData(adminPassword);
+    if (cached?.participants) setParticipants(cached.participants);
+    if (cached?.fasit) setFasit({ ...emptyFasit(), ...cached.fasit });
+    if (cached?.settings) setSettings(normalizeSettings(cached.settings));
+    if (cached?.participants) setLoaded(true);
+
     loadData(adminPassword).then((d) => {
       if (d?.participants) setParticipants(d.participants);
       if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
@@ -1015,7 +1093,7 @@ export default function App() {
       if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
       if (d?.settings) setSettings(normalizeSettings(d.settings));
     };
-    const interval = window.setInterval(refresh, 5000);
+    const interval = window.setInterval(refresh, 30000);
     return () => { active = false; window.clearInterval(interval); };
   }, [loaded, isAdmin]);
 
@@ -1255,6 +1333,18 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+    setImportMsg("Åpner Excel-leser …");
+    let XLSX;
+    try {
+      // Keep the heavy spreadsheet parser out of the public first-load bundle.
+      // Vite caches this chunk after the first admin import in a session.
+      XLSX = await import("xlsx");
+    } catch (err) {
+      console.error("Kunne ikke laste Excel-leser", err);
+      setImportMsg("Kunne ikke laste Excel-leser. Prøv igjen.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     let added = 0, updated = 0, failed = 0;
     let next = [...participants];
     for (const file of files) {
@@ -1528,8 +1618,8 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
         color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</span>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
         <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          color: it.status === "miss" ? "var(--text3)" : "var(--text1)" }}>
-          {it.team && flagOf(it.pick) ? `${flagOf(it.pick)} ` : ""}{it.pick || "—"}
+          color: it.status === "miss" ? "var(--text3)" : "var(--text1)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {it.team && <Flag name={it.pick} size={13} />}{it.pick || "—"}
         </span>
         {it.status === "hit"
           ? <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--accent)", flexShrink: 0 }}>+{it.points}</span>
@@ -1782,6 +1872,19 @@ function formatCountdown(date) {
 const LIVE_GAMES_CACHE_KEY = "vm2026_live_games_v2";
 let liveGamesRequest = null;
 
+// A small built-in schedule keeps the first visit useful while the live provider
+// warms up. It is immediately replaced by the live response, and the normal
+// local cache takes precedence on subsequent visits.
+const BUILTIN_LIVE_GAMES = [
+  { id: "18", home_team_name_en: "Iraq", away_team_name_en: "Norway", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-16T22:00:00.000Z", type: "group" },
+  { id: "41", home_team_name_en: "France", away_team_name_en: "Iraq", finished: "FALSE", kickoffAt: "2026-06-22T21:00:00.000Z", type: "group" },
+  { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", finished: "FALSE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
+  { id: "43", home_team_name_en: "Argentina", away_team_name_en: "Austria", finished: "FALSE", kickoffAt: "2026-06-22T17:00:00.000Z", type: "group" },
+  { id: "44", home_team_name_en: "Jordan", away_team_name_en: "Algeria", finished: "FALSE", kickoffAt: "2026-06-23T03:00:00.000Z", type: "group" },
+  { id: "45", home_team_name_en: "Portugal", away_team_name_en: "Uzbekistan", finished: "FALSE", kickoffAt: "2026-06-23T17:00:00.000Z", type: "group" },
+  { id: "62", home_team_name_en: "Norway", away_team_name_en: "France", finished: "FALSE", kickoffAt: "2026-06-26T19:00:00.000Z", type: "group" },
+];
+
 function readCachedLiveGames() {
   try {
     const cached = JSON.parse(localStorage.getItem(LIVE_GAMES_CACHE_KEY) || "null");
@@ -1789,6 +1892,10 @@ function readCachedLiveGames() {
   } catch {
     return null;
   }
+}
+
+function initialLiveGames() {
+  return readCachedLiveGames() || DEV_SAMPLE_GAMES || BUILTIN_LIVE_GAMES;
 }
 
 function loadLiveGames() {
@@ -1840,16 +1947,15 @@ function pickUpcomingGames(list, limit = 3) {
     .slice(0, limit);
 }
 
-// Fetches the fixture list from the existing wc proxy and shows Norway's next
-// unplayed match. In local development it falls back to the shared sample
-// schedule, while production only displays live fixture data.
+// Shows an instant bundled fixture, then replaces it with data from the live
+// provider. This avoids an empty homepage on a new computer or a cold cache.
 function NorwayNextGame({ theme }) {
-  const [game, setGame] = useState(() => pickNextNorwayGame(readCachedLiveGames() || DEV_SAMPLE_GAMES));
+  const [game, setGame] = useState(() => pickNextNorwayGame(initialLiveGames()));
   useEffect(() => {
     let alive = true;
     loadLiveGames()
       .then((games) => { if (alive) setGame(pickNextNorwayGame(games)); })
-      .catch(() => { if (alive) setGame(DEV_SAMPLE_GAMES ? pickNextNorwayGame(DEV_SAMPLE_GAMES) : null); });
+      .catch(() => { if (alive) setGame(pickNextNorwayGame(initialLiveGames())); });
     return () => { alive = false; };
   }, []);
 
@@ -1862,9 +1968,9 @@ function NorwayNextGame({ theme }) {
   const timeStr = date ? date.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" }) : "";
   const isLight = theme === "light";
   const norsePattern = isLight ? norseKnitBandLight : norseKnitBand;
-  const TeamCol = (flag, name) => (
+  const TeamCol = (name) => (
     <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 34, lineHeight: 1 }}>{flag}</div>
+      <div style={{ height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}><Flag name={name} size={34} /></div>
       <div style={{ fontWeight: 800, fontSize: 15, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
     </div>
   );
@@ -1881,9 +1987,9 @@ function NorwayNextGame({ theme }) {
       <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ ...HJ.badge, alignSelf: "flex-start" }}>Neste Norge-kamp</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, margin: "16px 0 12px" }}>
-          {TeamCol(flagOf("Norge"), "Norge")}
+          {TeamCol("Norge")}
           <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text3)", flexShrink: 0 }}>VS</div>
-          {TeamCol(flagOf(opp) || "🏳️", opp || "?")}
+          {TeamCol(opp || "?")}
         </div>
         <div style={{ textAlign: "center", color: "var(--text2)", fontSize: 14, textTransform: "capitalize" }}>
           {dateStr}{timeStr ? ` · ${timeStr} norsk tid` : ""}
@@ -1907,14 +2013,14 @@ const DEV_SAMPLE_GAMES = import.meta.env.DEV
   : null;
 
 // Henter kampoppsettet fra wc-proxyen og viser de neste kampene som skal spilles.
-// Renderer ingenting ved feil/ingen kamper, på samme måte som Neste Norge-kamp.
+// A bundled schedule fills the first paint while the live call is in flight.
 function UpcomingGames() {
-  const [games, setGames] = useState(() => pickUpcomingGames(readCachedLiveGames() || DEV_SAMPLE_GAMES));
+  const [games, setGames] = useState(() => pickUpcomingGames(initialLiveGames()));
   useEffect(() => {
     let alive = true;
     loadLiveGames()
       .then((liveGames) => { if (alive) setGames(pickUpcomingGames(liveGames)); })
-      .catch(() => { if (alive) setGames(DEV_SAMPLE_GAMES ? pickUpcomingGames(DEV_SAMPLE_GAMES) : null); });
+      .catch(() => { if (alive) setGames(pickUpcomingGames(initialLiveGames())); });
     return () => { alive = false; };
   }, []);
 
@@ -1938,11 +2044,11 @@ function UpcomingGames() {
           {x.date && <span style={{ fontSize: 10.5, color: "var(--accent)", fontWeight: 700, flexShrink: 0 }}>{formatCountdown(x.date)}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18, flexShrink: 0 }}>{flagOf(home) || "🏳️"}</span>
+          <Flag name={home} size={18} />
           <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{home || "?"}</span>
           <span style={{ color: "var(--text4)", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>VS</span>
           <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13.5, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{away || "?"}</span>
-          <span style={{ fontSize: 18, flexShrink: 0 }}>{flagOf(away) || "🏳️"}</span>
+          <Flag name={away} size={18} />
         </div>
       </div>
     );
@@ -1997,7 +2103,7 @@ function Hjem({ participants, showBonus, theme }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
               {top.map((c, i) => (
                 <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                  <span style={{ fontSize: 20, width: 26, textAlign: "center", flexShrink: 0 }}>{flagOf(c.name)}</span>
+                  <span style={{ width: 26, display: "inline-flex", justifyContent: "center", flexShrink: 0 }}><Flag name={c.name} size={20} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5, gap: 8 }}>
                       <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
@@ -2023,7 +2129,7 @@ function Hjem({ participants, showBonus, theme }) {
                 <React.Fragment key={team}>
                   {i > 0 && <span style={{ color: "var(--text4)", fontSize: 11, fontWeight: 800 }}>VS</span>}
                   <div style={{ minWidth: 0, textAlign: "center", flex: 1 }}>
-                    <div style={{ fontSize: 30, lineHeight: 1 }}>{flagOf(team) || "🏳️"}</div>
+                    <div style={{ height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}><Flag name={team} size={30} /></div>
                     <div style={{ marginTop: 6, fontSize: 15, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team}</div>
                   </div>
                 </React.Fragment>
@@ -2251,7 +2357,7 @@ function NorgesVeiTilVM() {
   const AMP = isMobile ? 13 : 44;
   const CX = LANE_W / 2;
   const GAP = isMobile ? 12 : 18;
-  const [vmNodes, setVmNodes] = useState(() => liveVoyageNodes(readCachedLiveGames() || DEV_SAMPLE_GAMES));
+  const [vmNodes, setVmNodes] = useState(() => liveVoyageNodes(initialLiveGames()));
   const voyageNodes = [...VOYAGE_CORE_NODES, ...vmNodes];
   const hasConfirmedFinal = voyageNodes.some((node) => node.round === "Finale" && node.kind === "knockout");
 
@@ -2261,6 +2367,7 @@ function NorgesVeiTilVM() {
   const fillRef = useRef(null);
   const shipRef = useRef(null);
   const lutRef = useRef(null);
+  const sceneMetricsRef = useRef({ pageTop: 0, maxScroll: 0 });
 
   const [geo, setGeo] = useState({ pathD: "", height: 0, nodes: [], waves: [] });
   const [activeIdx, setActiveIdx] = useState(0);
@@ -2271,7 +2378,7 @@ function NorgesVeiTilVM() {
     let alive = true;
     loadLiveGames()
       .then((games) => { if (alive) setVmNodes(liveVoyageNodes(games)); })
-      .catch(() => { if (alive) setVmNodes(liveVoyageNodes(DEV_SAMPLE_GAMES)); });
+      .catch(() => { if (alive) setVmNodes(liveVoyageNodes(initialLiveGames())); });
     return () => { alive = false; };
   }, []);
 
@@ -2279,20 +2386,34 @@ function NorgesVeiTilVM() {
   function update() {
     const L = lutRef.current, cont = containerRef.current, g = geoRef.current;
     if (!L || !cont) return;
-    const rect = cont.getBoundingClientRect();
+    const metrics = sceneMetricsRef.current;
     const anchor = window.innerHeight * 0.46;
     const lastNodeY = g.nodes.length ? g.nodes[g.nodes.length - 1].y : g.height;
-    const naturalY = Math.max(0, Math.min(lastNodeY, anchor - rect.top));
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    const dockingRange = Math.min(360, maxScroll);
-    const dockingProgress = dockingRange ? Math.max(0, Math.min(1, (dockingRange - (maxScroll - window.scrollY)) / dockingRange)) : 1;
+    // Keep the whole longship inside the rail at the final stop, rather than
+    // allowing its prow or flag to clip beyond the bottom edge.
+    const boatHalfHeight = isMobile ? 23 : 30;
+    const dockY = Math.max(0, Math.min(lastNodeY, g.height - boatHalfHeight));
+    const naturalY = Math.max(0, Math.min(dockY, anchor + window.scrollY - metrics.pageTop));
+    // A moderately longer final approach feels calmer without pulling the ship
+    // down to the last node too early while it is still in the viewport.
+    const dockingRange = Math.min(isMobile ? 500 : 440, metrics.maxScroll);
+    const dockingProgress = dockingRange ? Math.max(0, Math.min(1, (dockingRange - (metrics.maxScroll - window.scrollY)) / dockingRange)) : 1;
     const easedDocking = dockingProgress * dockingProgress * (3 - 2 * dockingProgress);
-    const y = naturalY + (lastNodeY - naturalY) * easedDocking;
+    const y = naturalY + (dockY - naturalY) * easedDocking;
     let lo = 0, hi = L.lut.length - 1;
     while (lo < hi) { const m = (lo + hi) >> 1; if (L.lut[m].y < y) lo = m + 1; else hi = m; }
-    const e = L.lut[lo];
+    // Interpolate between lookup samples. Choosing the next sample directly
+    // made the ship advance in visible steps on the tall mobile journey.
+    const next = L.lut[lo], prev = L.lut[Math.max(0, lo - 1)];
+    const span = next.y - prev.y;
+    const t = span > 0 ? Math.max(0, Math.min(1, (y - prev.y) / span)) : 0;
+    const e = {
+      x: prev.x + (next.x - prev.x) * t,
+      y: prev.y + (next.y - prev.y) * t,
+      len: prev.len + (next.len - prev.len) * t,
+      angle: prev.angle + (next.angle - prev.angle) * t,
+    };
     if (shipRef.current) {
-      shipRef.current.style.transition = dockingProgress > 0 ? "transform 420ms cubic-bezier(.16, 1, .3, 1)" : "";
       shipRef.current.setAttribute("transform", `translate(${e.x.toFixed(1)},${e.y.toFixed(1)}) rotate(${e.angle.toFixed(1)})`);
     }
     if (fillRef.current) fillRef.current.setAttribute("stroke-dasharray", `${e.len.toFixed(1)} ${(L.total + 12).toFixed(1)}`);
@@ -2306,6 +2427,11 @@ function NorgesVeiTilVM() {
     const measure = () => {
       const cont = containerRef.current;
       if (!cont) return;
+      const rect = cont.getBoundingClientRect();
+      sceneMetricsRef.current = {
+        pageTop: rect.top + window.scrollY,
+        maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
+      };
       const h = cont.offsetHeight;
       const nodes = [];
       const pts = [{ x: CX, y: Math.min(28, h) }];
@@ -2316,21 +2442,35 @@ function NorgesVeiTilVM() {
         nodes.push({ x, y, i });
         pts.push({ x, y });
       });
-      const waves = [];
+      const waveRows = [];
       const STEP = isMobile ? 26 : 32, ROWH = isMobile ? 34 : 40, GAPW = STEP * 1.6;
       let row = 0;
       for (let wy = 26; wy < h - 6; wy += ROWH, row++) {
         if (row % 3 === 1) continue; // leave some lines as open water
         const odd = row % 2 === 1;
+        // Deterministic variation gives each row its own tide without changing
+        // pattern every time ResizeObserver runs.
+        const seed = ((row * 37 + 17) % 97) / 97;
+        const speedSeed = ((row * 53 + 11) % 89) / 89;
+        const waveRow = {
+          y: wy, flip: odd,
+          drift: Math.round((isMobile ? 16 : 28) + seed * (isMobile ? 16 : 22)),
+          duration: 5.2 + speedSeed * 3.8,
+          delay: -(row * 0.73 + seed * 1.8),
+          waves: [],
+        };
         const run = odd ? 5 : 4; // a group of 4–5 waves, then a horizontal gap, then more
-        let x = (odd ? STEP / 2 : 0) - 8, n = 0;
-        while (x < LANE_W + 14) {
-          waves.push({ x, y: wy, flip: odd, deep: odd });
+        // Extend the pattern beyond the clipping rail so its gentle sideways
+        // drift never reveals a hard edge or makes a new wave pop into view.
+        let x = (odd ? STEP / 2 : 0) - 64, n = 0;
+        while (x < LANE_W + 64) {
+          waveRow.waves.push({ x, deep: odd });
           n++;
           x += (n % run === 0) ? GAPW : STEP;
         }
+        waveRows.push(waveRow);
       }
-      setGeo({ pathD: smoothPath(pts), height: h, nodes, waves });
+      setGeo({ pathD: smoothPath(pts), height: h, nodes, waves: waveRows });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -2383,11 +2523,18 @@ function NorgesVeiTilVM() {
           style={{ position: "absolute", left: 0, top: 0, overflow: "hidden" }}>
           <defs><clipPath id="laneClip"><rect x="0" y="0" width={LANE_W} height={geo.height || 1} rx="16" /></clipPath></defs>
           <rect x="0" y="0" width={LANE_W} height={geo.height || 1} rx="16" fill="#0A1E3C" />
-          <g className="voyage-waves" clipPath="url(#laneClip)">
-            {geo.waves.map((w, i) => (
-              <path key={i} d={SAGA_WAVE}
-                transform={`translate(${w.x.toFixed(1)},${w.y.toFixed(1)})${w.flip ? " scale(-1,1)" : ""}`}
-                fill="none" stroke={w.deep ? "#2F537E" : "#4C77A6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
+          <g clipPath="url(#laneClip)">
+            {geo.waves.map((row, rowIndex) => (
+              <g key={rowIndex} className="voyage-wave-line" style={{
+                "--wave-from": `${-row.drift}px`, "--wave-to": `${row.drift}px`,
+                animationDuration: `${row.duration.toFixed(2)}s`, animationDelay: `${row.delay.toFixed(2)}s`,
+              }}>
+                {row.waves.map((wave, waveIndex) => (
+                  <path key={waveIndex} d={SAGA_WAVE}
+                    transform={`translate(${wave.x.toFixed(1)},${row.y.toFixed(1)})${row.flip ? " scale(-1,1)" : ""}`}
+                    fill="none" stroke={wave.deep ? "#2F537E" : "#4C77A6"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
+                ))}
+              </g>
             ))}
           </g>
           {geo.pathD && <g clipPath="url(#laneClip)">
@@ -2512,13 +2659,13 @@ function VoyageCard({ node, active, isMobile, imageOnRight }) {
           ) : (
             <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 800, color: "var(--text1)" }}>
-                <span style={{ fontSize: 19 }}>{codeToFlag("NO")}</span> Norge
+                <Flag name="Norge" size={19} /> Norge
               </span>
               <span style={{ fontSize: 16, fontWeight: 900, color: played ? resColor : "var(--text3)", minWidth: 46, textAlign: "center", padding: "2px 9px", borderRadius: 8, background: "var(--bg2)" }}>
                 {played ? node.score : "vs"}
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 800, color: "var(--text1)" }}>
-                {node.opponent} <span style={{ fontSize: 19 }}>{flagOf(node.opponent) || codeToFlag(node.oppCode) || "🏳️"}</span>
+                {node.opponent} <Flag name={node.opponent} code={node.oppCode} size={19} />
               </span>
             </div>
           )}
@@ -3549,8 +3696,8 @@ const CSS = `
     0%, 100% { transform: rotate(0deg); }
     50% { transform: rotate(5deg); }
   }
-  .voyage-waves { animation: voyageDrift 9s linear infinite; }
-  @keyframes voyageDrift { from { transform: translateX(0); } to { transform: translateX(-32px); } }
+  .voyage-wave-line { animation-name: voyageDrift; animation-timing-function: ease-in-out; animation-iteration-count: infinite; animation-direction: alternate; will-change: transform; }
+  @keyframes voyageDrift { from { transform: translateX(var(--wave-from)); } to { transform: translateX(var(--wave-to)); } }
   .voyage-bob { animation: voyageShipBob 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   @keyframes voyageShipBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
   input[type=number]::-webkit-inner-spin-button { opacity: .4; }
@@ -3577,7 +3724,7 @@ const CSS = `
     .ceremony-prize-floor { width: 72vw; bottom: 2%; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .voyage-scene, .voyage-boat, .voyage-oar, .voyage-waves, .voyage-bob { animation: none !important; }
+    .voyage-scene, .voyage-boat, .voyage-oar, .voyage-wave-line, .voyage-bob { animation: none !important; }
     .voyage-boat, .voyage-rail-progress { transition: none !important; }
     .bonus-pop, .bonus-star, .podium-rise, .confetti-piece, .ceremony-copy, .ceremony-prize-stage, .ceremony-prize-aura { animation: none !important; }
   }
