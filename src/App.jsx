@@ -215,9 +215,12 @@ const norm = (s) =>
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
 
 const teamMatch = (a, b) => {
-  const na = norm(a), nb = norm(b);
-  if (!na || !nb) return false;
-  return na === nb || na.includes(nb) || nb.includes(na);
+  if (!a || !b) return false;
+  // Resolve both to the official team first (handles og/and/&/hyphen/forkortelser).
+  const ca = canonicalTeam(a), cb = canonicalTeam(b);
+  if (ca === cb) return true;
+  const na = norm(ca), nb = norm(cb);
+  return !!na && !!nb && (na === nb || na.includes(nb) || nb.includes(na));
 };
 
 // Klassifiserer hvert tips i en sluttspillrunde mot fasit:
@@ -292,17 +295,42 @@ const FLAG_CODES = {
   "Algerie": "dz", "Jordan": "jo", "Kongo": "cd", "Uzbekistan": "uz", "Ghana": "gh",
 };
 
+// Excel answers and the live fixture feed do not always use the same spelling.
+// Resolve whitespace, punctuation, Norwegian and English names before looking up
+// a local SVG so a valid country never falls back to an empty flag slot.
+const FLAG_NAME_ALIASES = {
+  ...Object.fromEntries(Object.keys(FLAG_CODES).map((name) => [norm(name), name])),
+  morocco: "Marokko",
+  scotland: "Skottland",
+  southafrica: "Sør Afrika",
+  southkorea: "Sør Korea",
+  netherlands: "Nederland",
+  germany: "Tyskland",
+  turkey: "Tyrkia",
+  ivorycoast: "Elfenbenskysten",
+  capeverde: "Kapp Verde",
+  saudiarabia: "Saudi Arabia",
+};
+
+const canonicalFlagName = (name) => {
+  const cleanName = String(name || "").replace(/\u00a0/g, " ").trim();
+  return FLAG_NAME_ALIASES[norm(cleanName)] || cleanName;
+};
+
 function Flag({ name, code, size = 18 }) {
-  const countryCode = FLAG_CODES[name] || code?.toLowerCase();
-  const fallback = countryCode ? countryCode.toUpperCase() : flagOf(name) || "?";
+  const countryName = canonicalFlagName(name);
+  const countryCode = FLAG_CODES[countryName] || code?.toLowerCase();
+  const fallback = countryCode ? countryCode.toUpperCase() : flagOf(countryName) || "?";
   return (
-    <span role="img" aria-label={name ? `${name} flagg` : "Flagg"} style={{
+    <span role="img" aria-label={countryName ? `${countryName} flagg` : "Flagg"} style={{
       display: "inline-grid", placeItems: "center", width: size, height: Math.round(size * 0.72),
       verticalAlign: "middle", lineHeight: 1, overflow: "hidden", borderRadius: Math.max(1, Math.round(size / 10)),
       background: "var(--bg2)", color: "var(--text3)", fontSize: Math.max(7, Math.round(size * 0.42)), fontWeight: 800,
     }}>
       <span aria-hidden="true" style={{ gridArea: "1 / 1", letterSpacing: 0.2 }}>{fallback}</span>
-      {countryCode && <img src={`/flags/${countryCode}.svg`} alt="" loading={size >= 24 ? "eager" : "lazy"} decoding="async" style={{
+      {countryCode && <img src={`/flags/${countryCode}.svg`} alt="" loading="eager" decoding="async" onError={(event) => {
+        event.currentTarget.style.display = "none";
+      }} style={{
         gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1,
       }} />}
     </span>
@@ -826,6 +854,15 @@ function pickResults(picks, fasit) {
   });
   push("quiz", "VM-quiz", quizItems);
 
+  // Vis lagnavn kanonisk (offisielt navn + flagg uansett skrivemåte i Excel).
+  for (const sec of sections) {
+    for (const it of sec.items) {
+      if (!it.team) continue;
+      if (it.pick) it.pick = canonicalTeam(it.pick);
+      if (it.actual) it.actual = canonicalTeam(it.actual);
+    }
+  }
+
   return {
     sections,
     earned: sections.reduce((s, sec) => s + sec.earned, 0),
@@ -905,9 +942,38 @@ const TEAM_NAME_MAP = {
   "bosnia and herzegovina": "Bosnia og Herzegovina",
 };
 
+// Kanonisk lagnavn: slår opp ethvert tips (engelsk, norsk, forkortelse, eller
+// "og"/"and"/"&"/bindestrek-varianter) til det offisielle lagnavnet fra trekningen.
+// Brukes både i visning (riktig navn + flagg) og i teamMatch (riktig poeng).
+const TEAM_CONJ = new Set(["og", "and", "the", "of"]);
+const normTeam = (s) =>
+  String(s || "").replace(/ /g, " ").toLowerCase()
+    .split(/[^a-zæøåäöü0-9]+/).filter((t) => t && !TEAM_CONJ.has(t)).join("");
+const ALL_OFFICIAL_TEAMS = [...new Set(Object.values(GROUPS).flat())];
+const CANON_LOOKUP = (() => {
+  const m = {};
+  for (const t of ALL_OFFICIAL_TEAMS) m[normTeam(t)] = t;
+  for (const [en, no] of Object.entries(TEAM_NAME_MAP)) { const k = normTeam(en); if (!m[k]) m[k] = no; }
+  return m;
+})();
+function canonicalTeam(name) {
+  const clean = String(name || "").replace(/ /g, " ").trim();
+  if (!clean) return "";
+  const key = normTeam(clean);
+  if (CANON_LOOKUP[key]) return CANON_LOOKUP[key];
+  if (key.length >= 4) {
+    for (const t of ALL_OFFICIAL_TEAMS) {
+      const tk = normTeam(t);
+      if (tk.includes(key) || key.includes(tk)) return t;
+    }
+  }
+  return clean;
+}
+
 function toNorwegian(name) {
   if (!name) return "";
-  return TEAM_NAME_MAP[name.toLowerCase().trim()] || name;
+  const cleanName = String(name).replace(/\u00a0/g, " ").trim();
+  return TEAM_NAME_MAP[cleanName.toLowerCase()] || canonicalFlagName(cleanName);
 }
 
 async function fetchResultsFromAPI() {
@@ -997,6 +1063,7 @@ export default function App() {
   });
   const [loaded, setLoaded] = useState(false);
   const isMobile = useIsMobile();
+  const isCompactHeader = useIsMobile(1080);
   const [isAdmin, setIsAdmin] = useState(() =>
     sessionStorage.getItem("vm_admin") === "1" && Boolean(sessionStorage.getItem("vm_pw"))
   );
@@ -1196,8 +1263,11 @@ export default function App() {
       )}
 
       <header style={S.header}>
-        <div style={S.headerInner}>
-          <div onClick={handleLogoClock} style={{ ...S.logo, cursor: "default", userSelect: "none" }}>
+        <div style={{
+          ...S.headerInner,
+          ...(!isCompactHeader ? { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)" } : {}),
+        }}>
+          <div onClick={handleLogoClock} style={{ ...S.logo, cursor: "default", userSelect: "none", ...(!isCompactHeader ? { justifySelf: "start" } : {}) }}>
             <img src={vmTrophyMark} alt="" style={S.logoMark} />
             <div>
               <div style={S.title}>VM 2026</div>
@@ -1212,7 +1282,8 @@ export default function App() {
           </div>
           <div className="no-scrollbar" style={{
             ...S.modeToggle,
-            marginLeft: isMobile ? 0 : "auto",
+            marginLeft: isCompactHeader && !isMobile ? "auto" : 0,
+            ...(!isCompactHeader ? { justifySelf: "center" } : {}),
             ...(isMobile ? { order: 3, flexBasis: "100%", maxWidth: "100%", overflowX: "auto", justifyContent: "flex-start" } : {}),
           }}>
             {tabs.map(([m, label]) => (
@@ -1224,7 +1295,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, ...(!isCompactHeader ? { justifySelf: "end", minWidth: 0 } : {}) }}>
             {isAdmin && mode === "present" && (
               <button
                 type="button"
@@ -2353,6 +2424,9 @@ function Longship() {
 
 function NorgesVeiTilVM() {
   const isMobile = useIsMobile();
+  // Kort stables (bilde over, info under) tidligere enn lane-bruddet — så side-ved-side
+  // bare i full bredde, og under bildet når vinduet blir smalere.
+  const cardMobile = useIsMobile(1024);
   const LANE_W = isMobile ? 58 : 188;
   const AMP = isMobile ? 13 : 44;
   const CX = LANE_W / 2;
@@ -2568,7 +2642,7 @@ function NorgesVeiTilVM() {
         <div style={{ marginLeft: LANE_W + GAP }}>
           {voyageNodes.map((node, i) => (
             <div key={node.id} ref={(el) => (cardRefs.current[i] = el)} style={{ padding: isMobile ? "9px 0" : "13px 0" }}>
-              <VoyageCard node={node} active={i === activeIdx} isMobile={isMobile} imageOnRight={i % 2 === 1} />
+              <VoyageCard node={node} active={i === activeIdx} isMobile={cardMobile} imageOnRight={i % 2 === 1} />
             </div>
           ))}
         </div>

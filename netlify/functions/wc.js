@@ -10,6 +10,7 @@ const CACHE_TTL_MS = {
   teams: 24 * 60 * 60 * 1000,
   stadiums: 24 * 60 * 60 * 1000,
 };
+const UPSTREAM_TIMEOUT_MS = 20_000;
 
 const response = (statusCode, headers, body) => ({
   statusCode,
@@ -55,7 +56,9 @@ export const handler = async (event) => {
   try {
     const upstream = await fetch(`https://worldcup26.ir/get/${endpoint}`, {
       headers: { "User-Agent": "vm-konkurranse/1.0" },
-      signal: AbortSignal.timeout(8000),
+      // The games feed can legitimately take 10–12 seconds. Let the homepage
+      // retain its visual fallback while this first request primes Blob cache.
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!upstream.ok) {
       throw new Error(`Upstream svarte med ${upstream.status}`);
