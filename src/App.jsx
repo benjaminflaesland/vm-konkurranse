@@ -323,10 +323,23 @@ const canonicalFlagName = (name) => {
   return cleanName;
 };
 
+// A few flag icons need self-contained image data so they paint consistently
+// at the small size used in prediction chips.
+const RASTER_FLAG_CODES = new Set(["ch", "gb-eng", "ec", "ba"]);
+const RASTER_FLAG_FILES = { "gb-eng": "gb-eng-flag.png" };
+const RASTER_FLAG_DATA = {
+  "gb-eng": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 600'%3E%3Crect width='900' height='600' fill='%23fff'/%3E%3Crect y='180' width='900' height='240' fill='%23cf142b'/%3E%3Crect x='300' width='300' height='600' fill='%23cf142b'/%3E%3C/svg%3E",
+  ch: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAABmJLR0QA/wD/AP+gvaeTAAAAh0lEQVRoge3Y0QkDIRBAwRjSf8t3LWyIuUF4U4D62J/Fdb3O9tYP+FUBWgFaAVoBWgHaZ/N512C3WmvjhcdPoACtAK0ArQCtAK0AbY1+5iY75j8M9tbjJ1CAVoBWgFaAVoA224Xm+pn7VgFaAVoBWgFaAVoB2u5t9HHHT6AArQCtAK0ArQDtBtxSCnv9YOjJAAAAAElFTkSuQmCC",
+  ec: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAAABmJLR0QA/wD/AP+gvaeTAAAAr0lEQVR4nO3SMRHDMAAEwSiuzCFl8BikeRmCGbgIgsyVUrGL4Ofmx3PtL/57zx6wOoGCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUxnacszcszYOCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUBArj/nxnb1iaBwWBgkBBoCBQECgIFAQKAgWBgkBBoCBQECgIFH63GASAs1peTwAAAABJRU5ErkJggg==",
+  ba: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAAABmJLR0QA/wD/AP+gvaeTAAADoUlEQVR4nO2bX0hTURjAv7vr1LmibTawcohNN7WMzCmFSyE0iBIp8CEoCuolKuotDQP7RxRE9SBFf8SHKEgwrEiSJFNHaP5pUeoEM//ELFPUzaGbbj1IF9Ntduc9956zu9/T2WF33+XHx3c+Dvso0JYBSs4V1F47WI00BFJoUO1FGsBk0U67pLmpFqRR0IFcEBDuiA9BANDer4ew6GydmYdY3CLhIcaRA/qxtmMlpRUW+UegwnmIyCHIBUVG0Hcv5URG0ACQlGyo6r2JOiK3IBe0KkoqiwxjPrYNGIqfFqAOyiHIa5BjenZr8tokrRIAJu3O0xcbX7XEElSz+SjSVW++9Q5MNJt/nSpt6BuyAVHnGh+C3G6PuWu0qdU6PulkNklxxNMx7xUiHAkpCEhwJLAgwN4RH42if/QbFeGa88/7yvDsIcOW/wpKdPGKtupCuUwKkNnVmZnkyBD2fZYicAYV7tHKZdL5dXKK4crLw8K+z1IEFmQdcTBru8N1tTILtz5b4CL9pWcsJUGZkqCyTbmOF7/73D2KW82mUN8o/g/KNRH2KZdr1s3s4HMPKfwxDwDTM3Nut2fhDj55hIUgr2DiCF9BgIcjrAUBBo6E76T9ELdhdW1F/tmiJ+2eOpDIBXkHrAXdu5yTZ9TEqKPSM3a9Gy0X5B2wFpSqj2bWNipDkB4Sa0E17/uZ9ev6/uvVu/l3hHWRfmsacrrmxidnbpWbHz7rBCFqNhadNFv47LOxziBf8JlHRAoCHh2RKgj4ckSwIJqmpIpsJ524LdYE4Fn+gYAQ+Mo1YGiaqnm0L8+oASjosexPtBkA3Ms/xh6s+yA/7DSszzNq5tc6fdqDliJEgUgVtOj+6HEjqv9EkFqDBoft6ZvUungFALyo+37jfkdTN5KaTWSjOA9FwY60GAD40DHs+ZtPnPeQpGbQPINW+6DVvnCH87OfbEFe4dZREAoCTh0FpyDgzhGpx7x/JBLqzNEt2fl36icqV3hXS2on7Z+ThzbfLjECAEBca4syXZIb8E8FZwblZmmY9bq47SvpIYNT0KfO38y6/evISu5qg7NIN5t/qlUytUpW3/zjxIUG25Qr4JpNcCcdAAH02cGZQb4III/EJQjYOxKdIGDpSIyCgM38WnAe8/5hNb8mOkFs59dEJ4jt/JroahDb+TXRCQKW82tiFMRqfk2Mgnzh1VFI0D8sdRQStJhFjkKCvLDQUUiQdxhHIUE+MVm0APAH8UK9x4zw+MUAAAAASUVORK5CYII=",
+};
+
 function Flag({ name, code, size = 18 }) {
   const countryName = canonicalFlagName(name);
   const countryCode = FLAG_CODES[countryName] || code?.toLowerCase();
   const fallback = countryCode ? countryCode.toUpperCase() : flagOf(countryName) || "?";
+  const flagExtension = RASTER_FLAG_CODES.has(countryCode) ? "png" : "svg";
+  const flagFile = RASTER_FLAG_DATA[countryCode] || `/flags/${RASTER_FLAG_FILES[countryCode] || `${countryCode}.${flagExtension}`}`;
   return (
     <span role="img" aria-label={countryName ? `${countryName} flagg` : "Flagg"} style={{
       display: "inline-grid", placeItems: "center", width: size, height: Math.round(size * 0.72),
@@ -334,27 +347,33 @@ function Flag({ name, code, size = 18 }) {
       boxSizing: "border-box", border: "0.5px solid color-mix(in srgb, var(--text1) 16%, transparent)",
       background: "var(--bg2)", color: "var(--text3)", fontSize: Math.max(7, Math.round(size * 0.42)), fontWeight: 800,
     }}>
-      <span aria-hidden="true" style={{ gridArea: "1 / 1", letterSpacing: 0.2 }}>{fallback}</span>
-      {countryCode && <img src={`/flags/${countryCode}.svg`} alt="" loading="eager" decoding="async" onError={(event) => {
+      <span aria-hidden="true" style={{ gridArea: "1 / 1", position: "relative", zIndex: 0, letterSpacing: 0.2 }}>{fallback}</span>
+      {countryCode && <img src={flagFile} alt="" loading="eager" decoding="async" onError={(event) => {
         event.currentTarget.style.display = "none";
       }} style={{
-        gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "cover", position: "relative", zIndex: 1,
+        gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "contain", position: "relative", zIndex: 1,
       }} />}
     </span>
   );
 }
 
-// FIFA 3-letter codes — used in the compact mobile bracket where full names won't fit.
+// FIFA 3-letter codes keep prediction cards readable at desktop and mobile widths.
 const CODES = {
   "Mexico": "MEX", "USA": "USA", "Canada": "CAN", "Sveits": "SUI", "Brasil": "BRA",
-  "Marokko": "MAR", "Australia": "AUS", "Tyskland": "GER", "Elfenbenskysten": "CIV",
-  "Nederland": "NED", "Japan": "JPN", "Belgia": "BEL", "Iran": "IRN", "Spania": "ESP",
-  "Uruguay": "URU", "Frankrike": "FRA", "Norge": "NOR", "Argentina": "ARG",
-  "Østerrike": "AUT", "Portugal": "POR", "Colombia": "COL", "England": "ENG",
-  "Kroatia": "CRO", "Panama": "PAN", "Bolivia": "BOL", "Kosovo": "KOS", "Senegal": "SEN",
-  "Sør-Korea": "KOR", "Sør-Afrika": "RSA", "Qatar": "QAT", "Tsjekkia": "CZE",
+  "Marokko": "MAR", "Australia": "AUS", "Tyskland": "GER", "Elfenbenskysten": "CIV", "Haiti": "HAI",
+  "Nederland": "NED", "Japan": "JPN", "Belgia": "BEL", "Iran": "IRN", "Spania": "ESP", "Ecuador": "ECU",
+  "Uruguay": "URU", "Frankrike": "FRA", "Norge": "NOR", "Argentina": "ARG", "Paraguay": "PAR",
+  "Østerrike": "AUT", "Portugal": "POR", "Colombia": "COL", "England": "ENG", "Kroatia": "CRO",
+  "Panama": "PAN", "Bolivia": "BOL", "Kosovo": "KOS", "Senegal": "SEN", "Irak": "IRQ",
+  "Sør-Korea": "KOR", "Sør Korea": "KOR", "Sør-Afrika": "RSA", "Sør Afrika": "RSA", "Qatar": "QAT", "Tsjekkia": "CZE",
+  "New Zealand": "NZL", "Egypt": "EGY", "Kapp Verde": "CPV", "Saudi Arabia": "KSA", "Sverige": "SWE", "Tunisia": "TUN",
+  "Bosnia og Herzegovina": "BIH", "Skottland": "SCO", "Tyrkia": "TUR", "Curacao": "CUW", "Curaçao": "CUW",
+  "Algerie": "ALG", "Jordan": "JOR", "Kongo": "COD", "Uzbekistan": "UZB", "Ghana": "GHA",
 };
-const codeOf = (name) => CODES[name] || (name ? name.slice(0, 3).toUpperCase() : "");
+const codeOf = (name) => {
+  const canonicalName = canonicalTeam(name);
+  return CODES[canonicalName] || (canonicalName ? canonicalName.slice(0, 3).toUpperCase() : "");
+};
 
 // FotMob-style group "table" row block: qualification bar + position + flag + name.
 // Skeleton placeholders for slots that aren't decided yet (nicer than a bare "—").
@@ -444,7 +463,7 @@ function LockIcon({ size = 16 }) {
 // FotMob-style mirrored horizontal bracket (desktop / wide screens). Two halves of
 // the draw converge on a center column holding the final, the bronze match and the
 // champion. Connectors are rounded SVG paths drawn behind the cards.
-function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
+function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames = false }) {
   const CW = 132, ROWH = 33, CH = 2 * ROWH + 1, CONN = 26, CS = CW + CONN, H = 384;
   const centerX = 3 * CS;
   const totalW = 6 * CS + CW;
@@ -467,7 +486,7 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH }}>
         <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={15} /> : <SkelDot />}</span>
         {name
-          ? <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{name}</span>
+          ? <span title={name} style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{compactNames ? codeOf(name) : name}</span>
           : <SkelBar w={58} />}
       </div>
     </>
@@ -538,7 +557,7 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
           <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase", marginBottom: 4 }}>Mester</div>
           <TrophyIcon size={34} />
           {finale
-            ? <div style={{ marginTop: 4, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--accent)" }}>{finale}</div>
+            ? <div title={finale} style={{ marginTop: 4, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--accent)" }}>{compactNames ? codeOf(finale) : finale}</div>
             : <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}><SkelBar w={64} /></div>}
         </div>
 
@@ -560,7 +579,7 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale }) {
           }}>
             <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{bronse ? <Flag name={bronse} size={15} /> : <SkelDot />}</span>
             {bronse
-              ? <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{bronse}</span>
+              ? <span title={bronse} style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{compactNames ? codeOf(bronse) : bronse}</span>
               : <SkelBar w={58} />}
           </div>
         </div>
@@ -781,20 +800,20 @@ function computeScores(picks, fasit) {
 function pickResults(picks, fasit) {
   picks = picks || {};
   const sections = [];
-  // Posisjonelt tips (gruppe/bronse/finale/quiz): hit eller miss.
+  // Posisjonelt tips (gruppe/bronse/finale/quiz): hit, miss eller ikke avgjort.
   const mk = (label, pick, actual, pts, team = true) => {
-    const status = pick && actual && teamMatch(pick, actual) ? "hit" : "miss";
+    const status = pick && !actual ? "pending" : pick && actual && teamMatch(pick, actual) ? "hit" : "miss";
     return { label, pick: pick || "", actual, status, points: status === "hit" ? pts : 0, max: pts, team };
   };
   // Sluttspillrunde: hit (rett plass), bonus (rett lag feil plass) eller miss.
   const koItems = (ids, pts, bonus, labelFn, getA, getP) => {
     const actuals = ids.map(getA);
-    if (!actuals.some(Boolean)) return [];
     const preds = ids.map(getP);
     const status = classifyRound(preds, actuals);
     return ids
       .map((m, i) => ({
-        label: labelFn(i), pick: preds[i] || "", actual: actuals[i] || null, status: status[i],
+        label: labelFn(i), pick: preds[i] || "", actual: actuals[i] || null,
+        status: preds[i] && !actuals[i] ? "pending" : status[i],
         points: status[i] === "hit" ? pts : status[i] === "bonus" ? bonus : 0, max: pts, team: true,
       }))
       .filter((it) => it.pick || it.actual);
@@ -814,18 +833,20 @@ function pickResults(picks, fasit) {
   for (const g of GROUP_KEYS) {
     const f = fasit.groups[g] || {};
     const p = picks.groups?.[g] || {};
-    if (f.first) groupItems.push(mk(`Gruppe ${g} · 1.`, p.first, f.first, POINTS.group));
-    if (f.second) groupItems.push(mk(`Gruppe ${g} · 2.`, p.second, f.second, POINTS.group));
+    if (p.first || f.first) groupItems.push(mk(`Gruppe ${g} · 1.`, p.first, f.first, POINTS.group));
+    if (p.second || f.second) groupItems.push(mk(`Gruppe ${g} · 2.`, p.second, f.second, POINTS.group));
   }
   const fThirds = (fasit.thirds || []).filter(Boolean);
-  if (fThirds.length) {
-    const used = new Set();
-    (picks.thirds || []).filter(Boolean).forEach((pt) => {
+  const used = new Set();
+  (picks.thirds || []).filter(Boolean).forEach((pt) => {
+    if (!fThirds.length) {
+      groupItems.push({ label: "Beste 3.-plass", pick: pt, actual: null, status: "pending", points: 0, max: POINTS.third, team: true });
+    } else {
       const hit = fThirds.findIndex((ft, i) => !used.has(i) && teamMatch(pt, ft));
       if (hit >= 0) used.add(hit);
       groupItems.push({ label: "Beste 3.-plass", pick: pt, actual: null, status: hit >= 0 ? "hit" : "miss", points: hit >= 0 ? POINTS.third : 0, max: POINTS.third, team: true });
-    });
-  }
+    }
+  });
   push("gruppe", "Gruppespill", groupItems);
 
   // Sluttspill: posisjonspoeng + bonus for rett lag feil plass
@@ -839,8 +860,8 @@ function pickResults(picks, fasit) {
   ]);
 
   const bf = [];
-  if (fasit.bronse) bf.push(mk("Bronsefinale", picks.bronse, fasit.bronse, POINTS.bronse));
-  if (fasit.finale) bf.push(mk("Finale · mester", picks.finale, fasit.finale, POINTS.finale));
+  if (picks.bronse || fasit.bronse) bf.push(mk("Bronsefinale", picks.bronse, fasit.bronse, POINTS.bronse));
+  if (picks.finale || fasit.finale) bf.push(mk("Finale · mester", picks.finale, fasit.finale, POINTS.finale));
   push("bf", "Bronse & finale", bf);
 
   // VM-quiz: spm 4 (idx 3) har ±5-toleranse
@@ -1673,7 +1694,30 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
 // ─────────────────────────────────────────────
 // STILLING — public leaderboard
 // ─────────────────────────────────────────────
-const STATUS_COLOR = { hit: "var(--accent)", bonus: "#E0A106", miss: "var(--text5)" };
+const STATUS_COLOR = { hit: "var(--accent)", bonus: "#E0A106", miss: "var(--text5)", pending: "var(--text4)" };
+const KNOCKOUT_SECTION_KEYS = new Set(["r16", "r8", "kvart", "semi", "bf"]);
+
+function PredictionBracket({ picks }) {
+  const narrow = useIsMobile(940);
+  const hasPredictions = Object.values(picks?.matches || {}).some(Boolean) || picks?.bronse || picks?.finale;
+  if (!hasPredictions) return null;
+
+  const getSlot = (id) => picks.matches?.[id] ?? null;
+  const getBronse = () => picks.bronse || null;
+  const getFinale = () => picks.finale || null;
+
+  return (
+    <section style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+      <div style={{ padding: "0 2px", marginBottom: 2 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--text3)" }}>Sluttspill · deltakerens tips</div>
+        <div style={{ marginTop: 3, color: "var(--text4)", fontSize: 11.5 }}>Tips hele veien til finalen</div>
+      </div>
+      {narrow
+        ? <VerticalBracket getSlot={getSlot} getBronse={getBronse} getFinale={getFinale} />
+        : renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames: true })}
+    </section>
+  );
+}
 
 function StillingBreakdown({ picks, fasit, showBonus }) {
   if (!picks) return <div style={{ padding: "0 20px 18px", color: "var(--text3)", fontSize: 13 }}>Ingen tips registrert.</div>;
@@ -1682,13 +1726,18 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
   const earned = sections.reduce((sum, sec) => sum + sec.earned, 0);
   const hits = sections.reduce((sum, sec) => sum + sec.hits, 0);
   const bonuses = sections.reduce((sum, sec) => sum + sec.bonuses, 0);
-  const itemCount = sections.reduce((sum, sec) => sum + sec.items.length, 0);
+  const decidedCount = sections.reduce((sum, sec) => sum + sec.items.filter((it) => it.status !== "pending").length, 0);
+  const pendingCount = sections.reduce((sum, sec) => sum + sec.items.filter((it) => it.status === "pending").length, 0);
+  const nonKnockoutSections = sections.filter((sec) => !KNOCKOUT_SECTION_KEYS.has(sec.key));
   if (!sections.length) return <div style={{ padding: "0 20px 18px", color: "var(--text3)", fontSize: 13 }}>Ingen resultater lagt inn ennå.</div>;
 
   const Dot = ({ c }) => <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: c, marginRight: 5, verticalAlign: "middle" }} />;
 
-  const Chip = ({ it }) => (
-    <div style={{
+  const Chip = ({ it }) => {
+    const pickLabel = it.team ? codeOf(it.pick) : it.pick;
+    const actualLabel = it.team ? codeOf(it.actual) : it.actual;
+    return (
+      <div style={{
       display: "flex", flexDirection: "column", gap: 2, padding: "6px 9px", borderRadius: 8,
       background: "var(--bg4)", borderLeft: `3px solid ${STATUS_COLOR[it.status]}`,
     }}>
@@ -1696,34 +1745,47 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
         color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</span>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
         <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          color: it.status === "miss" ? "var(--text3)" : "var(--text1)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-          {it.team && <Flag name={it.pick} size={13} />}{it.pick || "—"}
+          color: it.status === "miss" ? "var(--text3)" : "var(--text1)", display: "inline-flex", alignItems: "center", gap: 4 }} title={it.pick || undefined}>
+          {it.team && <Flag name={it.pick} size={13} />}{pickLabel || "—"}
         </span>
         {it.status === "hit"
           ? <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--accent)", flexShrink: 0 }}>+{it.points}</span>
           : it.status === "bonus"
-            ? <span style={{ fontSize: 11.5, fontWeight: 800, color: STATUS_COLOR.bonus, flexShrink: 0 }}>+{it.points}</span>
-            : (it.actual ? <span style={{ fontSize: 10.5, color: "var(--text4)", flexShrink: 0, whiteSpace: "nowrap" }}>→ {it.actual}</span> : null)}
+          ? <span style={{ fontSize: 11.5, fontWeight: 800, color: STATUS_COLOR.bonus, flexShrink: 0 }}>+{it.points}</span>
+          : it.status === "pending"
+            ? <span style={{ fontSize: 10.5, color: "var(--text4)", flexShrink: 0, whiteSpace: "nowrap" }}>venter</span>
+            : (it.actual ? <span title={it.actual} style={{ fontSize: 10.5, color: "var(--text4)", flexShrink: 0, whiteSpace: "nowrap" }}>→ {actualLabel}</span> : null)}
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
 
   return (
     <div style={{ padding: "0 20px 20px" }}>
       <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 6 }}>
-        <b style={{ color: "var(--text1)" }}>{hits}/{itemCount}</b> rett{bonuses > 0 ? <> · <b style={{ color: STATUS_COLOR.bonus }}>{bonuses}</b> nesten</> : null} · <b style={{ color: "var(--accent)" }}>{earned} poeng</b>
+        {decidedCount > 0
+          ? <><b style={{ color: "var(--text1)" }}>{hits}/{decidedCount}</b> rett{bonuses > 0 ? <> · <b style={{ color: STATUS_COLOR.bonus }}>{bonuses}</b> nesten</> : null} · <b style={{ color: "var(--accent)" }}>{earned} poeng</b></>
+          : <b style={{ color: "var(--text3)" }}>Ingen kamper avgjort ennå</b>}
+        {pendingCount > 0 && <> · {pendingCount} tips venter</>}
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: "var(--text3)" }}>
         <span><Dot c={STATUS_COLOR.hit} />rett lag, rett plass</span>
         <span><Dot c={STATUS_COLOR.bonus} />rett lag, feil plass</span>
         <span><Dot c={STATUS_COLOR.miss} />bom</span>
+        <span><Dot c={STATUS_COLOR.pending} />ikke avgjort</span>
       </div>
-      {sections.map((sec) => (
+      {nonKnockoutSections.map((sec) => (
         <div key={sec.key} style={{ marginTop: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, gap: 8 }}>
             <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--text3)" }}>{sec.label}</span>
             <span style={{ fontSize: 11.5, color: "var(--text3)", whiteSpace: "nowrap" }}>
-              <b style={{ color: "var(--text1)" }}>{sec.hits}/{sec.items.length}</b>{sec.bonuses > 0 ? <> · <b style={{ color: STATUS_COLOR.bonus }}>{sec.bonuses}</b> nesten</> : null} · <b style={{ color: "var(--accent)" }}>{sec.earned} p</b>
+              {(() => {
+                const decided = sec.items.filter((it) => it.status !== "pending").length;
+                const pending = sec.items.length - decided;
+                return decided > 0
+                  ? <><b style={{ color: "var(--text1)" }}>{sec.hits}/{decided}</b>{sec.bonuses > 0 ? <> · <b style={{ color: STATUS_COLOR.bonus }}>{sec.bonuses}</b> nesten</> : null} · <b style={{ color: "var(--accent)" }}>{sec.earned} p</b></>
+                  : <b>Venter</b>;
+              })()}{sec.items.filter((it) => it.status === "pending").length > 0 ? ` · ${sec.items.filter((it) => it.status === "pending").length} venter` : null}
             </span>
           </div>
           {sec.key === "quiz" ? (
@@ -1747,6 +1809,7 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
           )}
         </div>
       ))}
+      <PredictionBracket picks={picks} />
     </div>
   );
 }
