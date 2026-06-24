@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="title desc">
+  <title id="title">Minimal Norwegian Viking rower</title>
+  <desc id="desc">A simple blank-faced Viking with an upward-horned helmet and a centered beard rows a small boat. Both oar blades are in the water.</desc>
+
+  <rect width="480" height="300" fill="#fff6e8"/>
+
+  <!-- Far oar: behind the boat, with its blade in the water at the right. -->
+  <g id="far-oar" fill="none" stroke="#0b1d4e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M272 158 L420 255" stroke="#734720" stroke-width="12"/>
+    <path d="M408 244 L452 261 L431 287 L390 260 Z" fill="#c99752" stroke-width="5"/>
+  </g>
+
+  <!-- The figure is deliberately built from a few large, separate SVG shapes. -->
+  <g id="viking" stroke="#0b1d4e" stroke-linejoin="round">
+    <!-- Shirt, with no legs. The boat hides its lower edge. -->
+    <path d="M181 193 L193 124 L260 124 L284 193 Z" fill="#d82732" stroke-width="7"/>
+    <path d="M218 125 H239 V193 H218 Z" fill="#fff6e8" stroke="none"/>
+    <path d="M225 125 H234 V193 H225 Z" fill="#123b85" stroke="none"/>
+    <path d="M188 150 H271 V171 H188 Z" fill="#fff6e8" stroke="none"/>
+    <path d="M188 156 H271 V165 H188 Z" fill="#123b85" stroke="none"/>
+
+    <!-- Upward, outward horns. They sit behind the helmet dome. -->
+    <path d="M202 66 C181 59 170 46 173 19 C189 30 202 42 215 61 Z" fill="#f3e6c9" stroke-width="6"/>
+    <path d="M260 66 C281 59 292 46 289 19 C273 30 260 42 247 61 Z" fill="#f3e6c9" stroke-width="6"/>
+
+    <!-- Featureless face: no eyes or nose. -->
+    <circle cx="231" cy="84" r="39" fill="#f1bd95" stroke-width="7"/>
+
+    <!-- Full centered beard, confined below the face so there is no rear hair block. -->
+    <path d="M193 100 Q231 116 269 100 L270 123 L253 151 L231 164 L209 151 L192 123 Z" fill="#704526" stroke-width="6"/>
+
+    <!-- Helmet dome and simple rim. -->
+    <path d="M192 70 Q194 28 231 28 Q268 28 270 70 Z" fill="#818b95" stroke-width="7"/>
+    <path d="M190 65 H272 V78 H190 Z" fill="#56616d" stroke-width="6"/>
+  </g>
+
+  <!-- Hull: one readable silhouette with a single highlight stripe. -->
+  <g id="boat" stroke="#0b1d4e" stroke-linejoin="round">
+    <path d="M36 181 L444 181 L403 249 L77 249 Z" fill="#aa6c35" stroke-width="8"/>
+    <path d="M36 181 L77 249 L57 240 L23 188 Z" fill="#c28445" stroke-width="7"/>
+    <path d="M444 181 L403 249 L423 240 L457 188 Z" fill="#c28445" stroke-width="7"/>
+    <path d="M67 200 H413" fill="none" stroke="#d89a59" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- Near oar: in front of the boat, with its blade in the water at the left. -->
+  <g id="near-oar" fill="none" stroke="#0b1d4e" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M268 158 L79 256" stroke="#734720" stroke-width="12"/>
+    <path d="M94 243 L51 267 L70 292 L113 266 Z" fill="#c99752" stroke-width="5"/>
+  </g>
+
+  <!-- Arms and hands form the only moving character group needed for a rowing stroke. -->
+  <g id="arms" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M201 139 L243 163" stroke="#0b1d4e" stroke-width="25"/>
+    <path d="M201 139 L243 163" stroke="#d82732" stroke-width="15"/>
+    <path d="M255 139 L280 163" stroke="#0b1d4e" stroke-width="25"/>
+    <path d="M255 139 L280 163" stroke="#d82732" stroke-width="15"/>
+  </g>
+  <g id="hands" fill="#f1bd95" stroke="#0b1d4e" stroke-width="6">
+    <circle cx="245" cy="163" r="12"/>
+    <circle cx="282" cy="163" r="12"/>
+  </g>
+
+  <!-- Waterline establishes that neither blade is floating. -->
+  <path d="M24 271 Q58 261 92 271 T160 271 T228 271 T296 271 T364 271 T432 271 T466 271" fill="none" stroke="#418bca" stroke-width="6" stroke-linecap="round"/>
+</svg>

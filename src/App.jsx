@@ -63,6 +63,22 @@ const CELLS = {
   quiz: ["J83", "J84", "J85", "J86", "J87", "J88", "J89", "J90", "J91", "J92"],
 };
 
+// The World Cup 2026 knockout draw is not a simple numeric bracket. Keep the
+// progression from the competition template in one shared topology so desktop
+// and mobile both show the teams advancing from the correct previous matches.
+const BRACKET_TOPOLOGY = {
+  left: {
+    r16: [[74, 77], [73, 75], [83, 84], [81, 82]],
+    r8: [[89, 90], [93, 94]],
+    kvart: [[97, 98]],
+  },
+  right: {
+    r16: [[76, 78], [79, 80], [86, 88], [85, 87]],
+    r8: [[91, 92], [95, 96]],
+    kvart: [[99, 100]],
+  },
+};
+
 const QUIZ_QUESTIONS = [
   "Antall mål i kampen Norge–Frankrike?",
   "Toppscorer i VM?",
@@ -93,6 +109,8 @@ const PALETTE = [
 const STORAGE_KEY = "vm2026_ranking_data_v2";
 const PUBLIC_CACHE_KEY = "vm2026_public_cache_v1";
 const LAST_PUBLIC_MODE_KEY = "vm2026_last_public_mode";
+const SUPPORTER_ROW_ENDPOINT = "/.netlify/functions/supporter-row";
+const SUPPORTER_ROW_DEV_KEY = "vm2026_supporter_rows_dev";
 const PUBLIC_MODES = new Set(["hjem", "stilling", "fasit-view", "vei-vm", "present"]);
 const DEFAULT_CEREMONY = { phase: "rounds", step: 0, bonusRevealed: 0 };
 const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremony: DEFAULT_CEREMONY };
@@ -170,6 +188,21 @@ async function saveData(data, adminPassword) {
   }
 }
 
+async function supporterRows(method = "GET") {
+  if (import.meta.env.DEV) {
+    const stored = Number(localStorage.getItem(SUPPORTER_ROW_DEV_KEY));
+    const count = Number.isFinite(stored) && stored >= 0 ? stored : 0;
+    const next = method === "POST" ? count + 1 : count;
+    if (method === "POST") localStorage.setItem(SUPPORTER_ROW_DEV_KEY, String(next));
+    return next;
+  }
+
+  const res = await fetch(SUPPORTER_ROW_ENDPOINT, { method });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !Number.isFinite(body.count)) throw new Error(body.error || "Kunne ikke hente åretak");
+  return body.count;
+}
+
 function readLocalData(adminPassword) {
   try {
     const cached = localStorage.getItem(adminPassword ? STORAGE_KEY : PUBLIC_CACHE_KEY);
@@ -213,6 +246,16 @@ const norm = (s) =>
   String(s || "").toLowerCase().replace(/[^a-zæøåäöü0-9]/g, "");
 
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
+const norwegianNameList = (names) => {
+  if (names.length < 2) return names[0] || "";
+  if (names.length === 2) return `${names[0]} og ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} og ${names[names.length - 1]}`;
+};
+
+// Benjamin keeps his tips in the app, but is shown separately from the
+// competitive leaderboard and never affects ranks, public stats or the ceremony.
+const isExcludedFromCompetition = (participant) =>
+  participant?.excluded === true || norm(firstName(participant?.name)) === "benjamin";
 
 const teamMatch = (a, b) => {
   if (!a || !b) return false;
@@ -469,14 +512,14 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames =
   const totalW = 6 * CS + CW;
 
   const leftCols = [
-    { x: 0,      cards: [[73, 74], [75, 76], [77, 78], [79, 80]] },
-    { x: CS,     cards: [[89, 90], [91, 92]] },
-    { x: 2 * CS, cards: [[97, 98]] },
+    { x: 0,      cards: BRACKET_TOPOLOGY.left.r16 },
+    { x: CS,     cards: BRACKET_TOPOLOGY.left.r8 },
+    { x: 2 * CS, cards: BRACKET_TOPOLOGY.left.kvart },
   ];
   const rightCols = [
-    { x: 4 * CS, cards: [[99, 100]] },
-    { x: 5 * CS, cards: [[93, 94], [95, 96]] },
-    { x: 6 * CS, cards: [[81, 82], [83, 84], [85, 86], [87, 88]] },
+    { x: 4 * CS, cards: BRACKET_TOPOLOGY.right.kvart },
+    { x: 5 * CS, cards: BRACKET_TOPOLOGY.right.r8 },
+    { x: 6 * CS, cards: BRACKET_TOPOLOGY.right.r16 },
   ];
   const cy = (n, i) => H * (i + 0.5) / n;
 
@@ -600,16 +643,16 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
   const useCode = CW < 96;
   const teamText = (name) => (name ? (useCode ? codeOf(name) : name) : "—");
   const topRounds = [
-    { pairs: [[73, 74], [75, 76], [77, 78], [79, 80]] },
-    { pairs: [[89, 90], [91, 92]] },
-    { pairs: [[97, 98]] },
+    { pairs: BRACKET_TOPOLOGY.left.r16 },
+    { pairs: BRACKET_TOPOLOGY.left.r8 },
+    { pairs: BRACKET_TOPOLOGY.left.kvart },
     { pairs: [[101]] },
   ];
   const botRounds = [
     { pairs: [[102]] },
-    { pairs: [[99, 100]] },
-    { pairs: [[93, 94], [95, 96]] },
-    { pairs: [[81, 82], [83, 84], [85, 86], [87, 88]] },
+    { pairs: BRACKET_TOPOLOGY.right.kvart },
+    { pairs: BRACKET_TOPOLOGY.right.r8 },
+    { pairs: BRACKET_TOPOLOGY.right.r16 },
   ];
   const HALF_H = topRounds.length * CH + (topRounds.length - 1) * CV;
 
@@ -903,8 +946,47 @@ function pickResults(picks, fasit) {
 // ─────────────────────────────────────────────
 // EXCEL-PARSING
 // ─────────────────────────────────────────────
+// A saved workbook can contain a cover or instruction sheet before the answer
+// sheet. The old importer always used SheetNames[0], so the fixed knockout-cell
+// map could be read from the wrong sheet even though the workbook was valid.
+function isExcelTeamPick(value) {
+  const key = normTeam(value);
+  return Boolean(key && CANON_LOOKUP[key]);
+}
+
+function answerSheet(wb) {
+  const knockoutAddresses = [
+    ...Object.values(CELLS.r16),
+    ...Object.values(CELLS.r8),
+    ...Object.values(CELLS.kvart),
+    CELLS.semi[101].win, CELLS.semi[101].lose,
+    CELLS.semi[102].win, CELLS.semi[102].lose,
+    CELLS.bronse, CELLS.finale,
+  ];
+  const groupAddresses = [
+    ...GROUP_KEYS.flatMap((g) => [CELLS.groups[g].first, CELLS.groups[g].second]),
+    ...CELLS.thirds,
+  ];
+  let best = { sheet: wb.Sheets[wb.SheetNames[0]], score: 0 };
+
+  for (const sheetName of wb.SheetNames) {
+    const sheet = wb.Sheets[sheetName];
+    const read = (addr) => {
+      const cell = sheet?.[addr];
+      return cell?.v === undefined || cell?.v === null ? "" : String(cell.v).trim();
+    };
+    // Knockout selections are weighted more heavily: they are the columns
+    // most likely to be present in a separate answer sheet.
+    const score = knockoutAddresses.filter((addr) => isExcelTeamPick(read(addr))).length * 3
+      + groupAddresses.filter((addr) => isExcelTeamPick(read(addr))).length;
+    if (score > best.score) best = { sheet, score };
+  }
+
+  return best.sheet;
+}
+
 function parseWorkbook(wb, filename) {
-  const ws = wb.Sheets[wb.SheetNames[0]];
+  const ws = answerSheet(wb);
   const val = (addr) => {
     const c = ws[addr];
     if (!c || c.v === undefined || c.v === null) return "";
@@ -1316,7 +1398,7 @@ export default function App() {
           }}>
             {tabs.map(([m, label]) => (
               <button key={m} onClick={() => setMode(m)}
-                disabled={m === "present" && (isAdmin || settings.ceremonyUnlocked) && participants.length < 2}
+                disabled={m === "present" && (isAdmin || settings.ceremonyUnlocked) && participants.filter((p) => !isExcludedFromCompetition(p)).length < 2}
                 style={{ ...S.modeBtn, ...(mode === m ? S.modeBtnActive : {}) }}>
                 {m === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.tabLock}><LockIcon size={12} /></span>}
                 {label}
@@ -1814,16 +1896,48 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
   );
 }
 
+function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open, onToggle, fasit, showBonus, excluded = false, divider = false }) {
+  return (
+    <div style={{ borderBottom: divider ? "1px solid var(--border)" : "none" }}>
+      <div onClick={onToggle} style={{
+        display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", cursor: "pointer",
+        background: open ? "var(--bg2)" : excluded ? "color-mix(in srgb, var(--bg2) 64%, transparent)" : "transparent",
+        transition: "background .15s",
+      }}>
+        <span style={{ width: 28, fontWeight: 800, fontSize: 18, color: excluded ? "var(--text4)" : rank <= 3 ? "var(--accent)" : "var(--text3)" }}>
+          {excluded ? "–" : rank}
+        </span>
+        <span style={{ ...S.dot, background: participant.color, width: 12, height: 12, opacity: excluded ? 0.65 : 1 }} />
+        <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 700, fontSize: 16, color: excluded ? "var(--text2)" : "var(--text1)" }}>{firstName(participant.name)}</span>
+          {excluded && <span style={{ padding: "3px 7px", borderRadius: 5, background: "var(--bg4)", color: "var(--text3)", fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase" }}>Ekskludert</span>}
+        </span>
+        {!isMobile && ROUNDS.map((r) => (
+          <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 3, width: roundColumnWidth }}>
+            <span style={{ color: excluded ? "var(--text3)" : "var(--text1)", fontWeight: 700, fontSize: 13 }}>{participant.scores[r.key] || 0}</span>
+            <span style={{ fontSize: 10, color: "var(--text4)", whiteSpace: "nowrap" }}>{r.short}</span>
+          </span>
+        ))}
+        <span style={{ fontWeight: 900, fontSize: 20, color: excluded ? "var(--text3)" : "var(--accent)", minWidth: 44, textAlign: "right" }}>
+          {participant.total}
+        </span>
+        <span style={{ color: "var(--text4)", fontSize: 11, width: 14, textAlign: "center",
+          transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
+      </div>
+      {open && <StillingBreakdown picks={participant.picks} fasit={fasit} showBonus={showBonus} />}
+    </div>
+  );
+}
+
 function Stilling({ participants, fasit, showBonus }) {
   const isMobile = useIsMobile();
   const [openId, setOpenId] = useState(null);
   const roundColumnWidth = 68;
-  const withTotal = [...participants]
-    .map((p) => {
-      const base = cumulative(p, ROUNDS.length - 1);
-      return { ...p, total: base + (showBonus ? p.bonus || 0 : 0) };
-    })
+  const toTotal = (p) => ({ ...p, total: cumulative(p, ROUNDS.length - 1) + (showBonus ? p.bonus || 0 : 0) });
+  const ranked = participants.filter((p) => !isExcludedFromCompetition(p)).map(toTotal)
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+  const excluded = participants.filter(isExcludedFromCompetition).map(toTotal)
+    .sort((a, b) => a.name.localeCompare(b.name, "nb-NO"));
 
   if (participants.length === 0) {
     return (
@@ -1845,47 +1959,35 @@ function Stilling({ participants, fasit, showBonus }) {
         )}
       </div>
       <div style={{ position: "relative", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden" }}>
-          {!isMobile && <div style={{
-            display: "flex", alignItems: "center", gap: 12, padding: "14px 20px 12px",
-            borderBottom: "1px solid var(--border)", color: "var(--text3)", fontSize: 10.5,
-            fontWeight: 800, letterSpacing: 0.7, textTransform: "uppercase",
-          }}>
-            <span style={{ width: 28 }} />
-            <span style={{ width: 12 }} />
-            <span style={{ flex: 1 }}>Spiller</span>
-            {ROUNDS.map((r) => <span key={r.key} style={{ width: roundColumnWidth, textAlign: "right" }}>{r.short}</span>)}
-            <span style={{ minWidth: 44, textAlign: "right", color: "var(--text3)" }}>Totalt</span>
-            <span style={{ width: 14 }} />
-          </div>}
-          {withTotal.map((p, i) => {
-          const open = openId === p.id;
-          return (
-            <div key={p.id} style={{ borderBottom: i < withTotal.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <div onClick={() => setOpenId(open ? null : p.id)} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", cursor: "pointer",
-                background: open ? "var(--bg2)" : "transparent", transition: "background .15s",
-              }}>
-                <span style={{ width: 28, fontWeight: 800, fontSize: 18, color: i < 3 ? "var(--accent)" : "var(--text3)" }}>
-                  {i + 1}
-                </span>
-                <span style={{ ...S.dot, background: p.color, width: 12, height: 12 }} />
-                <span style={{ flex: 1, fontWeight: 700, fontSize: 16, color: "var(--text1)" }}>{firstName(p.name)}</span>
-                {!isMobile && ROUNDS.map((r) => (
-                  <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 3, width: roundColumnWidth }}>
-                    <span style={{ color: "var(--text1)", fontWeight: 700, fontSize: 13 }}>{p.scores[r.key] || 0}</span>
-                    <span style={{ fontSize: 10, color: "var(--text4)", whiteSpace: "nowrap" }}>{r.short}</span>
-                  </span>
-                ))}
-                <span style={{ fontWeight: 900, fontSize: 20, color: "var(--accent)", minWidth: 44, textAlign: "right" }}>
-                  {p.total}
-                </span>
-                <span style={{ color: "var(--text4)", fontSize: 11, width: 14, textAlign: "center",
-                  transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
-              </div>
-              {open && <StillingBreakdown picks={p.picks} fasit={fasit} showBonus={showBonus} />}
+        {!isMobile && <div style={{
+          display: "flex", alignItems: "center", gap: 12, padding: "14px 20px 12px",
+          borderBottom: "1px solid var(--border)", color: "var(--text3)", fontSize: 10.5,
+          fontWeight: 800, letterSpacing: 0.7, textTransform: "uppercase",
+        }}>
+          <span style={{ width: 28 }} />
+          <span style={{ width: 12 }} />
+          <span style={{ flex: 1 }}>Spiller</span>
+          {ROUNDS.map((r) => <span key={r.key} style={{ width: roundColumnWidth, textAlign: "right" }}>{r.short}</span>)}
+          <span style={{ minWidth: 44, textAlign: "right", color: "var(--text3)" }}>Totalt</span>
+          <span style={{ width: 14 }} />
+        </div>}
+        {ranked.map((p, i) => (
+          <LeaderboardEntry key={p.id} participant={p} rank={i + 1} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
+            open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
+            divider={i < ranked.length - 1} />
+        ))}
+        {excluded.length > 0 && (
+          <div style={{ borderTop: ranked.length > 0 ? "1px solid var(--border)" : "none" }}>
+            <div style={{ padding: "10px 20px 8px", color: "var(--text4)", fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" }}>
+              Utenfor konkurransen
             </div>
-          );
-          })}
+            {excluded.map((p, i) => (
+              <LeaderboardEntry key={p.id} participant={p} rank={null} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
+                open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
+                excluded divider={i < excluded.length - 1} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1950,8 +2052,15 @@ function computeHomeStats(participants, showBonus) {
   const depths = participants.map((p) => ({ name: firstName(p.name), depth: depthOf(p) }));
   const advance = depths.filter((d) => d.depth >= 1).length;
   const champions = depths.filter((d) => d.depth >= 6).length;
-  const deepest = [...depths].sort((a, b) => b.depth - a.depth)[0];
-  const deepestShown = deepest && deepest.depth >= 1 ? { name: deepest.name, label: DEPTH_LABEL[deepest.depth] } : null;
+  const deepestDepth = Math.max(0, ...depths.map((d) => d.depth));
+  const deepestShown = deepestDepth >= 1
+    ? {
+        names: depths.filter((d) => d.depth === deepestDepth)
+          .map((d) => d.name)
+          .sort((a, b) => a.localeCompare(b, "nb-NO")),
+        label: DEPTH_LABEL[deepestDepth],
+      }
+    : null;
   const leaderboard = participants
     .map((p) => ({
       name: firstName(p.name),
@@ -2019,7 +2128,7 @@ let liveGamesRequest = null;
 const BUILTIN_LIVE_GAMES = [
   { id: "18", home_team_name_en: "Iraq", away_team_name_en: "Norway", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-16T22:00:00.000Z", type: "group" },
   { id: "41", home_team_name_en: "France", away_team_name_en: "Iraq", finished: "FALSE", kickoffAt: "2026-06-22T21:00:00.000Z", type: "group" },
-  { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", finished: "FALSE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
+  { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", home_score: "3", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
   { id: "43", home_team_name_en: "Argentina", away_team_name_en: "Austria", finished: "FALSE", kickoffAt: "2026-06-22T17:00:00.000Z", type: "group" },
   { id: "44", home_team_name_en: "Jordan", away_team_name_en: "Algeria", finished: "FALSE", kickoffAt: "2026-06-23T03:00:00.000Z", type: "group" },
   { id: "45", home_team_name_en: "Portugal", away_team_name_en: "Uzbekistan", finished: "FALSE", kickoffAt: "2026-06-23T17:00:00.000Z", type: "group" },
@@ -2145,23 +2254,28 @@ function NorwayNextGame({ theme }) {
 // kjører ikke i `npm run dev`). I produksjon brukes ekte data fra proxyen.
 const DEV_SAMPLE_GAMES = import.meta.env.DEV
   ? [
-      ["Norway", "Spain", 20], ["Brazil", "France", 27], ["Argentina", "Croatia", 44],
-      ["England", "Netherlands", 51], ["Portugal", "Germany", 68], ["Belgium", "Morocco", 75],
-    ].map(([h, a, hrs]) => ({
-      home_team_name_en: h, away_team_name_en: a, finished: "FALSE",
-      date_time: new Date(Date.now() + hrs * 3600 * 1000).toISOString(),
-    }))
+      { id: "18", home_team_name_en: "Iraq", away_team_name_en: "Norway", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-16T22:00:00.000Z", type: "group" },
+      { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", home_score: "3", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
+      { id: "62", home_team_name_en: "Norway", away_team_name_en: "France", finished: "FALSE", kickoffAt: "2026-06-26T19:00:00.000Z", type: "group" },
+      { id: "63", home_team_name_en: "France", away_team_name_en: "Iraq", finished: "FALSE", kickoffAt: "2026-06-27T19:00:00.000Z", type: "group" },
+      { id: "64", home_team_name_en: "Argentina", away_team_name_en: "Austria", finished: "FALSE", kickoffAt: "2026-06-27T22:00:00.000Z", type: "group" },
+      { id: "65", home_team_name_en: "Portugal", away_team_name_en: "Uzbekistan", finished: "FALSE", kickoffAt: "2026-06-28T19:00:00.000Z", type: "group" },
+      { id: "66", home_team_name_en: "Jordan", away_team_name_en: "Algeria", finished: "FALSE", kickoffAt: "2026-06-28T22:00:00.000Z", type: "group" },
+      { id: "67", home_team_name_en: "Brazil", away_team_name_en: "Senegal", finished: "FALSE", kickoffAt: "2026-06-29T19:00:00.000Z", type: "group" },
+      { id: "68", home_team_name_en: "Spain", away_team_name_en: "Norway", finished: "FALSE", kickoffAt: "2026-06-30T19:00:00.000Z", type: "group" },
+    ]
   : null;
 
 // Henter kampoppsettet fra wc-proxyen og viser de neste kampene som skal spilles.
 // A bundled schedule fills the first paint while the live call is in flight.
 function UpcomingGames() {
-  const [games, setGames] = useState(() => pickUpcomingGames(initialLiveGames()));
+  const [games, setGames] = useState(() => pickUpcomingGames(initialLiveGames(), 6));
+  const [start, setStart] = useState(0);
   useEffect(() => {
     let alive = true;
     loadLiveGames()
-      .then((liveGames) => { if (alive) setGames(pickUpcomingGames(liveGames)); })
-      .catch(() => { if (alive) setGames(pickUpcomingGames(initialLiveGames())); });
+      .then((liveGames) => { if (alive) setGames(pickUpcomingGames(liveGames, 6)); })
+      .catch(() => { if (alive) setGames(pickUpcomingGames(initialLiveGames(), 6)); });
     return () => { alive = false; };
   }, []);
 
@@ -2195,22 +2309,185 @@ function UpcomingGames() {
     );
   };
 
+  const visibleCount = 3;
+  const lastStart = Math.max(0, games.length - visibleCount);
+  const visibleStart = Math.min(start, lastStart);
+  const visible = games.slice(visibleStart, visibleStart + visibleCount);
+  const hasMore = games.length > visibleCount;
+  const navButton = {
+    width: 30, height: 30, display: "grid", placeItems: "center", border: "none", borderRadius: 8,
+    background: "var(--bg4)", color: "var(--accent)", fontFamily: "inherit", fontSize: 21,
+    fontWeight: 800, lineHeight: 1, cursor: "pointer",
+  };
   return (
     <div style={HJ.card}>
-      <div style={S.fasitSectionTitle}>Kommende kamper</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+        <div style={{ ...S.fasitSectionTitle, marginBottom: 0 }}>Kommende kamper</div>
+        {hasMore && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label="Bla gjennom kommende kamper">
+            <button
+              type="button"
+              onClick={() => setStart((current) => Math.max(0, current - 1))}
+              disabled={visibleStart === 0}
+              aria-label="Vis forrige kamper"
+              style={{ ...navButton, opacity: visibleStart === 0 ? 0.35 : 1, cursor: visibleStart === 0 ? "default" : "pointer" }}
+            >
+              ‹
+            </button>
+            <span aria-live="polite" style={{ minWidth: 45, color: "var(--text3)", fontSize: 11, fontWeight: 800, textAlign: "center", whiteSpace: "nowrap" }}>
+              {visibleStart + 1}–{Math.min(visibleStart + visibleCount, games.length)} / {games.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => setStart((current) => Math.min(current + 1, lastStart))}
+              disabled={visibleStart === lastStart}
+              aria-label="Vis neste kamper"
+              style={{ ...navButton, opacity: visibleStart === lastStart ? 0.35 : 1, cursor: visibleStart === lastStart ? "default" : "pointer" }}
+            >
+              ›
+            </button>
+          </div>
+        )}
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {games.map((x, i) => <Row key={i} x={x} />)}
+        {visible.map((x, i) => <Row key={i} x={x} />)}
+      </div>
+    </div>
+  );
+}
+
+function GeometricRower({ stroke }) {
+  return (
+    <svg className="supporter-rower-geometry" viewBox="0 0 480 300" aria-hidden="true">
+      <g className="supporter-rower-geometry-float">
+        {/* far oar — behind the boat, blade in the water at the right */}
+        <g key={`far-${stroke}`} className="supporter-rower-geometry-faroar" fill="none" stroke="#0b1d4e" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M272 158 L420 255" stroke="#734720" strokeWidth="12" />
+          <path d="M408 244 L452 261 L431 287 L390 260 Z" fill="#c99752" strokeWidth="5" />
+        </g>
+        {/* the viking — shirt, horns, blank face, beard, helmet — rocks forward and back as one */}
+        <g key={`body-${stroke}`} className="supporter-rower-geometry-body" stroke="#0b1d4e" strokeLinejoin="round">
+          <path d="M181 193 L193 124 L260 124 L284 193 Z" fill="#d82732" strokeWidth="7" />
+          <path d="M218 125 H239 V193 H218 Z" fill="#fff6e8" stroke="none" />
+          <path d="M225 125 H234 V193 H225 Z" fill="#123b85" stroke="none" />
+          <path d="M188 150 H271 V171 H188 Z" fill="#fff6e8" stroke="none" />
+          <path d="M188 156 H271 V165 H188 Z" fill="#123b85" stroke="none" />
+          <path d="M202 66 C181 59 170 46 173 19 C189 30 202 42 215 61 Z" fill="#f3e6c9" strokeWidth="6" />
+          <path d="M260 66 C281 59 292 46 289 19 C273 30 260 42 247 61 Z" fill="#f3e6c9" strokeWidth="6" />
+          <circle cx="231" cy="84" r="39" fill="#f1bd95" strokeWidth="7" />
+          <path d="M193 100 Q231 116 269 100 L270 123 L253 151 L231 164 L209 151 L192 123 Z" fill="#704526" strokeWidth="6" />
+          <path d="M192 70 Q194 28 231 28 Q268 28 270 70 Z" fill="#818b95" strokeWidth="7" />
+          <path d="M190 65 H272 V78 H190 Z" fill="#56616d" strokeWidth="6" />
+        </g>
+        {/* hull */}
+        <g stroke="#0b1d4e" strokeLinejoin="round">
+          <path d="M36 181 L444 181 L403 249 L77 249 Z" fill="#aa6c35" strokeWidth="8" />
+          <path d="M36 181 L77 249 L57 240 L23 188 Z" fill="#c28445" strokeWidth="7" />
+          <path d="M444 181 L403 249 L423 240 L457 188 Z" fill="#c28445" strokeWidth="7" />
+          <path d="M67 200 H413" fill="none" stroke="#d89a59" strokeWidth="7" strokeLinecap="round" />
+        </g>
+        {/* near oar — in front of the boat, blade in the water at the left */}
+        <g key={`near-${stroke}`} className="supporter-rower-geometry-nearoar" fill="none" stroke="#0b1d4e" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M268 158 L79 256" stroke="#734720" strokeWidth="12" />
+          <path d="M94 243 L51 267 L70 292 L113 266 Z" fill="#c99752" strokeWidth="5" />
+        </g>
+        {/* arms + hands grip the oars and drive the stroke */}
+        <g key={`arms-${stroke}`} className="supporter-rower-geometry-body" fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M201 139 L243 163" stroke="#0b1d4e" strokeWidth="25" />
+          <path d="M201 139 L243 163" stroke="#d82732" strokeWidth="15" />
+          <path d="M255 139 L280 163" stroke="#0b1d4e" strokeWidth="25" />
+          <path d="M255 139 L280 163" stroke="#d82732" strokeWidth="15" />
+        </g>
+        <g key={`hands-${stroke}`} className="supporter-rower-geometry-body" fill="#f1bd95" stroke="#0b1d4e" strokeWidth="6">
+          <circle cx="245" cy="163" r="12" />
+          <circle cx="282" cy="163" r="12" />
+        </g>
+      </g>
+      {/* waterline — keeps the blades sitting in the water */}
+      <path d="M24 271 Q58 261 92 271 T160 271 T228 271 T296 271 T364 271 T432 271 T466 271" fill="none" stroke="#418bca" strokeWidth="6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RowingSupporter() {
+  const [serverCount, setServerCount] = useState(null);
+  const [pendingRows, setPendingRows] = useState(0);
+  const [error, setError] = useState("");
+  const [stroke, setStroke] = useState(0);
+  const queueRef = useRef(Promise.resolve());
+
+  useEffect(() => {
+    let active = true;
+    supporterRows()
+      .then((count) => { if (active) setServerCount(count); })
+      .catch(() => { if (active) setError("Kunne ikke hente årets total."); });
+    return () => { active = false; };
+  }, []);
+
+  const settleRow = () => {
+    setPendingRows((pending) => Math.max(0, pending - 1));
+  };
+
+  const row = () => {
+    setPendingRows((pending) => pending + 1);
+    setStroke((value) => value + 1);
+    setError("");
+
+    queueRef.current = queueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const count = await supporterRows("POST");
+          settleRow();
+          setServerCount((current) => Math.max(current || 0, count));
+        } catch {
+          settleRow();
+          setError("Åretaket ble ikke telt. Prøv igjen.");
+          try {
+            const count = await supporterRows();
+            setServerCount(count);
+          } catch {}
+        }
+      });
+  };
+
+  const count = (serverCount || 0) + pendingRows;
+  const formattedCount = serverCount === null && pendingRows === 0 ? "…" : new Intl.NumberFormat("nb-NO").format(count);
+
+  return (
+    <div className="supporter-rower">
+      <button type="button" className="supporter-rower-button" onClick={row} aria-label="Ta et åretak for Norge">
+        <GeometricRower stroke={stroke} />
+        <span className="supporter-rower-chant" aria-hidden="true" key={stroke}>
+          <span>R</span>
+          {["o", "O", "o", "o", "O", "o"].map((letter, index) => (
+            <span
+              key={index}
+              className="supporter-rower-letter"
+              style={{ "--chant-delay": `${index * 0.09}s` }}
+            >
+              {letter}
+            </span>
+          ))}
+          <span>!</span>
+        </span>
+      </button>
+      <div className="supporter-rower-count" aria-live="polite" aria-atomic="true">
+        <strong>{formattedCount}</strong>
+        <span>Åretak for Norge</span>
+        {error && <small role="status">{error}</small>}
       </div>
     </div>
   );
 }
 
 function Hjem({ participants, showBonus, theme }) {
-  const stats = computeHomeStats(participants, showBonus);
+  const stats = computeHomeStats(participants.filter((p) => !isExcludedFromCompetition(p)), showBonus);
   const N = stats.total;
   const top = stats.championRanking.slice(0, 4);
   const folketsFinale = stats.finalistRanking[0];
   const nw = stats.norway;
+  const deepestOptimists = nw.deepest?.names || [];
   const leader = stats.leaderboard[0];
   const runnerUp = stats.leaderboard[1];
   const tiedLeaders = leader ? stats.leaderboard.filter((p) => p.total === leader.total) : [];
@@ -2219,15 +2496,18 @@ function Hjem({ participants, showBonus, theme }) {
   return (
     <div style={S.adminWrap}>
       {/* Hero / om konkurransen */}
-      <div style={{ ...HJ.card, borderTop: "3px solid var(--accent)", marginBottom: 14 }}>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text1)", marginBottom: 8 }}>VM 2026 – Tippekonkurranse</div>
-        <p style={{ color: "var(--text2)", lineHeight: 1.6, fontSize: 14.5, margin: "0 0 14px", maxWidth: 640 }}>
-          Velkommen til VM 2026-tippekonkurransen! VM-feberen er i gang, og her følger dere stillingen og resultatene etter hver kampdag. Hvem hadde de beste tipsene?
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <span style={HJ.chip}>{N} {N === 1 ? "deltaker" : "deltakere"}</span>
-          {leader && N > 0 && <span style={HJ.chip}>Leder: {leader.name}</span>}
+      <div className="home-welcome" style={{ ...HJ.card, borderTop: "3px solid var(--accent)", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text1)", marginBottom: 8 }}>VM 2026 – Tippekonkurranse</div>
+          <p style={{ color: "var(--text2)", lineHeight: 1.6, fontSize: 14.5, margin: "0 0 14px", maxWidth: 640 }}>
+            Velkommen til VM 2026-tippekonkurransen! VM-feberen er i gang, og her følger dere stillingen og resultatene etter hver kampdag. Hvem hadde de beste tipsene?
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <span style={HJ.chip}>{N} {N === 1 ? "deltaker" : "deltakere"}</span>
+            {leader && N > 0 && <span style={HJ.chip}>Leder: {leader.name}</span>}
+          </div>
         </div>
+        <RowingSupporter />
       </div>
 
       {/* Live kampoversikt */}
@@ -2314,7 +2594,9 @@ function Hjem({ participants, showBonus, theme }) {
                 <span style={HJ.statText}>av {N} tror Norge tar seg videre fra gruppespillet</span>
               </div>
               {nw.deepest && nw.deepest.label !== "16-delsfinalen" && (
-                <div style={HJ.factLine}>Mest optimistisk: <b>{nw.deepest.name}</b> har Norge helt til {nw.deepest.label === "VM-gull" ? "VM-gull" : nw.deepest.label}</div>
+                <div style={HJ.factLine}>
+                  {deepestOptimists.length === 1 ? "Mest optimistisk" : "Mest optimistiske"}: <b>{norwegianNameList(deepestOptimists)}</b> har Norge helt til {nw.deepest.label === "VM-gull" ? "VM-gull" : nw.deepest.label}
+                </div>
               )}
               {nw.champions > 0 && (
                 <div style={HJ.factLine}>{nw.champions} {nw.champions === 1 ? "person tror" : "personer tror"} Norge vinner hele VM</div>
@@ -2436,11 +2718,18 @@ function gameToVoyageNode(game) {
 }
 
 function liveVoyageNodes(games) {
+  let groupMatchesPlayed = 0;
+  let groupPoints = 0;
   return (games || [])
     .filter((game) => game.home_team_name_en === "Norway" || game.away_team_name_en === "Norway")
     .map((game) => ({ node: gameToVoyageNode(game), kickoff: parseGameDate(game), id: Number(game.id) || Infinity }))
     .sort((a, b) => (a.kickoff?.getTime() ?? Infinity) - (b.kickoff?.getTime() ?? Infinity) || a.id - b.id)
-    .map(({ node }) => node);
+    .map(({ node }) => {
+      if (node.kind !== "group" || !node.result) return node;
+      groupMatchesPlayed += 1;
+      groupPoints += node.result === "W" ? 3 : node.result === "D" ? 1 : 0;
+      return { ...node, groupMatchesPlayed, groupPoints };
+    });
 }
 
 // Catmull-Rom spline through points → one smooth cubic-bezier path string
@@ -2775,13 +3064,14 @@ function VoyageCard({ node, active, isMobile, imageOnRight }) {
   const upcomingFixture = !played && !placeholder && Boolean(node.opponent);
   const campaignLabel = placeholder ? "Mulig videre vei" : upcomingFixture ? "Neste kamp" : resLabel;
   const campaignTitle = placeholder ? "Kun ved avansement" : upcomingFixture ? kickoff ? formatCountdown(kickoff) : "Kampdato kommer" : node.result === "W" ? "3 poeng" : node.result === "D" ? "1 poeng" : "0 poeng";
+  const perfectGroupStart = node.kind === "group" && node.result === "W" && node.groupMatchesPlayed === 2 && node.groupPoints === 6;
   const campaignCopy = placeholder
     ? "Motstander og kampdato fastsettes etter gruppespillet."
     : upcomingFixture
       ? kickoff
         ? `${kickoff.toLocaleDateString("nb-NO", { weekday: "long", day: "numeric", month: "long" })} · ${kickoff.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })} norsk tid`
         : "Tidspunktet er ikke fastsatt ennå."
-      : node.result === "W" ? "En sterk start på VM-reisen." : node.result === "D" ? "Alt er fortsatt åpent i gruppa." : "Norge må slå tilbake i neste kamp.";
+      : node.result === "W" ? perfectGroupStart ? "Seks poeng av seks — Norge står med full pott etter to kamper." : "En sterk start på VM-reisen." : node.result === "D" ? "Alt er fortsatt åpent i gruppa." : "Norge må slå tilbake i neste kamp.";
   const panelColor = placeholder ? "#C7A75D" : upcomingFixture ? "var(--accent)" : resColor;
 
   return (
@@ -2859,6 +3149,7 @@ function FasitView({ fasit, showBonus, theme }) {
   const secStyle = isMobile ? { ...S.fasitSection, padding: 13 } : S.fasitSection;
   const anyGroupData = GROUP_KEYS.some((g) => fasit.groups[g].first);
   const anyMatchData = Object.values(fasit.matches).some(Boolean);
+  const thirdPlaced = fasit.thirds || [];
 
   return (
     <div style={S.adminWrap}>
@@ -2879,6 +3170,26 @@ function FasitView({ fasit, showBonus, theme }) {
 
       <div style={secStyle}>
         <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <PatternSectionLabel theme={theme}>Beste treere</PatternSectionLabel>
+          {!thirdPlaced.some(Boolean) && (
+            <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>Ikke avgjort ennå.</span>
+          )}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+          {Array.from({ length: 8 }, (_, i) => {
+            const team = thirdPlaced[i];
+            return (
+              <div key={i} style={{ minHeight: 42, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, borderRadius: 8, background: "var(--bg4)", border: "1px solid var(--border)" }}>
+                <span style={{ color: "var(--text4)", fontSize: 10, fontWeight: 800, width: 15, flexShrink: 0 }}>{i + 1}</span>
+                {team ? <><Flag name={team} size={19} /><span style={{ color: "var(--text1)", fontSize: 13, fontWeight: 700 }}>{team}</span></> : <span style={{ color: "var(--text4)", fontSize: 12.5, fontWeight: 600 }}>Venter</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={secStyle}>
+        <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <PatternSectionLabel theme={theme}>Sluttspill</PatternSectionLabel>
           {!anyMatchData && (
             <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>Ikke spilt ennå — brakettene fylles ut underveis.</span>
@@ -2893,7 +3204,7 @@ function FasitView({ fasit, showBonus, theme }) {
               getSlot: id => fasit.matches?.[id] ?? null,
               getBronse: () => fasit.bronse,
               getFinale: () => fasit.finale,
-            })}
+        })}
       </div>
 
       {showBonus && fasit.quiz.some(Boolean) && (
@@ -3157,18 +3468,19 @@ function LockedCeremony() {
 }
 
 function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit }) {
+  const competingParticipants = participants.filter((p) => !isExcludedFromCompetition(p));
   const normalizedCeremony = normalizeCeremony(ceremony);
   const { phase, step } = normalizedCeremony;
-  const bonusRevealed = Math.min(normalizedCeremony.bonusRevealed, participants.length);
+  const bonusRevealed = Math.min(normalizedCeremony.bonusRevealed, competingParticipants.length);
 
-  const finalBase = participants.map((p) => ({
+  const finalBase = competingParticipants.map((p) => ({
     ...p, base: ROUNDS.reduce((s, r) => s + (p.scores[r.key] || 0), 0),
   }));
   const participantById = new Map(finalBase.map((p) => [p.id, p]));
   const syncedBonusOrder = normalizedCeremony.bonusOrder
     ?.map((id) => participantById.get(id))
     .filter(Boolean);
-  const bonusOrder = syncedBonusOrder?.length === participants.length
+  const bonusOrder = syncedBonusOrder?.length === competingParticipants.length
     ? syncedBonusOrder
     : [...finalBase].sort((a, b) => (a.bonus || 0) - (b.bonus || 0));
 
@@ -3177,12 +3489,12 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
       if (step < ROUNDS.length - 1) setCeremony({ ...normalizedCeremony, step: step + 1 });
       else setCeremony({ ...normalizedCeremony, phase: "bonus", bonusRevealed: 0 });
     } else if (phase === "bonus") {
-      if (bonusRevealed < participants.length) setCeremony({ ...normalizedCeremony, bonusRevealed: bonusRevealed + 1 });
-      else setCeremony({ ...normalizedCeremony, phase: "winner", bonusRevealed: participants.length });
+      if (bonusRevealed < competingParticipants.length) setCeremony({ ...normalizedCeremony, bonusRevealed: bonusRevealed + 1 });
+      else setCeremony({ ...normalizedCeremony, phase: "winner", bonusRevealed: competingParticipants.length });
     }
   };
   const prev = () => {
-    if (phase === "winner") setCeremony({ ...normalizedCeremony, phase: "bonus", bonusRevealed: participants.length });
+    if (phase === "winner") setCeremony({ ...normalizedCeremony, phase: "bonus", bonusRevealed: competingParticipants.length });
     else if (phase === "bonus") {
       if (bonusRevealed > 0) setCeremony({ ...normalizedCeremony, bonusRevealed: bonusRevealed - 1 });
       else setCeremony({ ...normalizedCeremony, phase: "rounds", step: ROUNDS.length - 1 });
@@ -3197,15 +3509,15 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isAdmin, phase, step, bonusRevealed, participants.length, onExit]);
+  }, [isAdmin, phase, step, bonusRevealed, competingParticipants.length, onExit]);
 
   const phaseLabel = phase === "rounds" ? ROUNDS[step].label
-    : phase === "bonus" ? `${BONUS_LABEL} (${bonusRevealed}/${participants.length})`
+    : phase === "bonus" ? `${BONUS_LABEL} (${bonusRevealed}/${competingParticipants.length})`
     : "Vinner!";
 
   return (
     <div style={S.presentWrap}>
-      {phase === "rounds" && <BumpChart participants={participants} step={step} />}
+      {phase === "rounds" && <BumpChart participants={competingParticipants} step={step} />}
       {phase === "bonus" && (
         <BonusReveal finalBase={finalBase} bonusOrder={bonusOrder} revealed={bonusRevealed} />
       )}
@@ -3220,7 +3532,7 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
           </div>
           <button onClick={next} disabled={phase === "winner"} style={{ ...S.navBtn, ...S.navBtnPrimary }}>
             {phase === "rounds" && step === ROUNDS.length - 1 ? "Bonusrunde ›"
-              : phase === "bonus" && bonusRevealed === participants.length ? "Kår vinner ›"
+              : phase === "bonus" && bonusRevealed === competingParticipants.length ? "Kår vinner ›"
               : "Neste ›"}
           </button>
         </div>
@@ -3844,6 +4156,30 @@ const CSS = `
   @keyframes voyageDrift { from { transform: translateX(var(--wave-from)); } to { transform: translateX(var(--wave-to)); } }
   .voyage-bob { animation: voyageShipBob 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   @keyframes voyageShipBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
+  .home-welcome { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; }
+  .supporter-rower { display: flex; align-items: center; gap: 10px; min-width: 212px; }
+  .supporter-rower-button { appearance: none; border: 0; padding: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-size: 11px; font-weight: 900; letter-spacing: .85px; text-align: center; }
+  .supporter-rower-chant { display: inline-flex; align-items: baseline; }
+  .supporter-rower-letter { display: inline-block; animation: supporterChant .82s ease-in-out infinite; animation-delay: var(--chant-delay); }
+  .supporter-rower-button:hover { color: var(--text1); }
+  .supporter-rower-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 8px; }
+  .supporter-rower-geometry { display: block; width: 152px; height: 95px; filter: drop-shadow(0 6px 9px rgba(0,0,0,.16)); }
+  .supporter-rower-geometry-float { animation: supporterFloat 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  .supporter-rower-geometry-body { animation: geomBody .95s cubic-bezier(.36,.7,.3,1); transform-box: view-box; transform-origin: 231px 196px; }
+  .supporter-rower-geometry-faroar { animation: geomFarOar .95s cubic-bezier(.36,.7,.3,1); transform-box: view-box; transform-origin: 307px 181px; }
+  .supporter-rower-geometry-nearoar { animation: geomNearOar .95s cubic-bezier(.36,.7,.3,1); transform-box: view-box; transform-origin: 224px 181px; }
+  .supporter-rower-button:hover .supporter-rower-geometry { transform: translateY(-2px); }
+  @keyframes supporterFloat { 0%,100% { transform: translateY(0) rotate(-0.7deg); } 50% { transform: translateY(-7px) rotate(0.7deg); } }
+  /* the rower dips forward toward the oars and back, with a bit of lean (rotation) layered on */
+  @keyframes geomBody { 0% { transform: translateY(0) rotate(0deg); } 32% { transform: translateY(9px) rotate(-6deg); } 64% { transform: translateY(-4px) rotate(5deg); } 100% { transform: translateY(0) rotate(0deg); } }
+  /* each oar levers on its oarlock so the blade sweeps; the two mirror each other */
+  @keyframes geomFarOar { 0% { transform: rotate(0deg); } 30% { transform: rotate(-13deg); } 62% { transform: rotate(10deg); } 100% { transform: rotate(0deg); } }
+  @keyframes geomNearOar { 0% { transform: rotate(0deg); } 30% { transform: rotate(13deg); } 62% { transform: rotate(-10deg); } 100% { transform: rotate(0deg); } }
+  @keyframes supporterChant { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  .supporter-rower-count { display: flex; flex-direction: column; align-items: flex-start; min-width: 76px; }
+  .supporter-rower-count strong { color: var(--accent); font-size: 28px; line-height: 1; letter-spacing: -.8px; }
+  .supporter-rower-count span { margin-top: 4px; color: var(--text2); font-size: 11px; font-weight: 800; line-height: 1.2; }
+  .supporter-rower-count small { margin-top: 5px; color: #E0564F; font-size: 10px; font-weight: 700; line-height: 1.25; }
   input[type=number]::-webkit-inner-spin-button { opacity: .4; }
   select option { background: #1C1C1E; }
   @media (max-width: 700px) {
@@ -3866,9 +4202,11 @@ const CSS = `
     .ceremony-prize-aura { width: min(110vw, 620px); }
     .ceremony-prize { height: min(55svh, 510px); max-width: 82vw; }
     .ceremony-prize-floor { width: 72vw; bottom: 2%; }
+    .home-welcome { grid-template-columns: 1fr; gap: 16px; }
+    .supporter-rower { justify-content: flex-start; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .voyage-scene, .voyage-boat, .voyage-oar, .voyage-wave-line, .voyage-bob { animation: none !important; }
+    .voyage-scene, .voyage-boat, .voyage-oar, .voyage-wave-line, .voyage-bob, .supporter-rower-geometry-float, .supporter-rower-geometry-body, .supporter-rower-geometry-faroar, .supporter-rower-geometry-nearoar, .supporter-rower-letter { animation: none !important; }
     .voyage-boat, .voyage-rail-progress { transition: none !important; }
     .bonus-pop, .bonus-star, .podium-rise, .confetti-piece, .ceremony-copy, .ceremony-prize-stage, .ceremony-prize-aura { animation: none !important; }
   }
