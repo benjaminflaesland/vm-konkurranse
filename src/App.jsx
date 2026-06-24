@@ -332,8 +332,9 @@ const norwegianNameList = (names) => {
   return `${names.slice(0, -1).join(", ")} og ${names[names.length - 1]}`;
 };
 
-// Benjamin keeps his tips in the app, but is shown separately from the
-// competitive leaderboard and never affects ranks, public stats or the ceremony.
+// Benjamin keeps his tips in the app but never affects ranks, public stats or the
+// ceremony. He's still listed at the bottom of the leaderboard, just without any
+// "out of competition" label.
 const isExcludedFromCompetition = (participant) =>
   participant?.excluded === true || norm(firstName(participant?.name)) === "benjamin";
 
@@ -2038,7 +2039,6 @@ function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open,
         <span style={{ ...S.dot, background: participant.color, width: 12, height: 12, opacity: excluded ? 0.65 : 1 }} />
         <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700, fontSize: 16, color: excluded ? "var(--text2)" : "var(--text1)" }}>{firstName(participant.name)}</span>
-          {excluded && <span style={{ padding: "3px 7px", borderRadius: 5, background: "var(--bg4)", color: "var(--text3)", fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase" }}>Ekskludert</span>}
         </span>
         {!isMobile && ROUNDS.map((r) => (
           <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", minWidth: 0 }}>
@@ -2108,9 +2108,6 @@ function Stilling({ participants, fasit, showBonus }) {
         ))}
         {excluded.length > 0 && (
           <div style={{ borderTop: ranked.length > 0 ? "1px solid var(--border)" : "none" }}>
-            <div style={{ padding: "10px 20px 8px", color: "var(--text4)", fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" }}>
-              Utenfor konkurransen
-            </div>
             {excluded.map((p, i) => (
               <LeaderboardEntry key={p.id} participant={p} rank={null} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
                 open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
