@@ -63,21 +63,101 @@ const CELLS = {
   quiz: ["J83", "J84", "J85", "J86", "J87", "J88", "J89", "J90", "J91", "J92"],
 };
 
-// The World Cup 2026 knockout draw is not a simple numeric bracket. Keep the
-// progression from the competition template in one shared topology so desktop
-// and mobile both show the teams advancing from the correct previous matches.
+// Every winner cell has the two teams immediately to its left: one row above
+// and on the same row. Keeping this derived from the winner map means the
+// import contract stays aligned with the fixed Excel template.
+function matchupCellsForWinner(winnerCell) {
+  const match = /^([A-Z])(\d+)$/.exec(winnerCell);
+  if (!match) throw new Error(`Ugyldig Excel-celle: ${winnerCell}`);
+  const [, winnerColumn, winnerRow] = match;
+  const matchupColumn = String.fromCharCode(winnerColumn.charCodeAt(0) - 1);
+  const row = Number(winnerRow);
+  return [`${matchupColumn}${row - 1}`, `${matchupColumn}${row}`];
+}
+
+const WINNER_CELLS_BY_MATCH = {
+  ...CELLS.r16,
+  ...CELLS.r8,
+  ...CELLS.kvart,
+  101: CELLS.semi[101].win,
+  102: CELLS.semi[102].win,
+  103: CELLS.bronse,
+  104: CELLS.finale,
+};
+
+const MATCHUP_CELLS = Object.fromEntries(
+  Object.entries(WINNER_CELLS_BY_MATCH).map(([matchId, winnerCell]) => [matchId, matchupCellsForWinner(winnerCell)])
+);
+
+// The World Cup 2026 knockout draw is not a simple numeric bracket. The template
+// fixes which group winners / runners-up / third-place teams meet in each
+// 16-delsfinale, and how every round feeds the next. We keep that whole
+// progression here so desktop and mobile render identical, correct brackets.
+// Each round is the list of match numbers shown in that column, outermost first.
 const BRACKET_TOPOLOGY = {
   left: {
-    r16: [[74, 77], [73, 75], [83, 84], [81, 82]],
-    r8: [[89, 90], [93, 94]],
-    kvart: [[97, 98]],
+    r32: [74, 77, 73, 75, 76, 78, 79, 80],
+    r16: [89, 90, 91, 92],
+    kvart: [97, 98],
+    semi: [101],
   },
   right: {
-    r16: [[76, 78], [79, 80], [86, 88], [85, 87]],
-    r8: [[91, 92], [95, 96]],
-    kvart: [[99, 100]],
+    r32: [83, 84, 81, 82, 86, 88, 85, 87],
+    r16: [93, 94, 95, 96],
+    kvart: [99, 100],
+    semi: [102],
   },
 };
+
+// Which two matches feed each later match (winner of A v winner of B), from the
+// competition template's "Oppsett" notes.
+const MATCH_FEEDERS = {
+  89: [74, 77], 90: [73, 75], 91: [76, 78], 92: [79, 80],
+  93: [83, 84], 94: [81, 82], 95: [86, 88], 96: [85, 87],
+  97: [89, 90], 98: [91, 92], 99: [93, 94], 100: [95, 96],
+  101: [97, 98], 102: [99, 100], 104: [101, 102],
+};
+
+// The 16-delsfinaler matchups are fixed by the draw: each side is a group winner
+// (1X), runner-up (2X) or a best-third-place slot (T0–T7, aligned with
+// CELLS.thirdLabels). The two teams are derived from the group/third-place picks
+// rather than stored as match winners, so the bracket can show e.g. Tyskland–Skottland.
+const R32_MATCHUPS = {
+  73: ["2A", "2B"], 74: ["1E", "T0"], 75: ["1F", "2C"], 76: ["1C", "2F"],
+  77: ["1I", "T1"], 78: ["2E", "2I"], 79: ["1A", "T2"], 80: ["1L", "T3"],
+  81: ["1D", "T4"], 82: ["1G", "T5"], 83: ["2K", "2L"], 84: ["1H", "2J"],
+  85: ["1B", "T6"], 86: ["1J", "2H"], 87: ["1K", "T7"], 88: ["2D", "2G"],
+};
+
+function resolveBracketTeam(code, groups, thirds) {
+  if (!code) return null;
+  if (code[0] === "T") return thirds?.[Number(code.slice(1))] || null;
+  const g = groups?.[code[1]];
+  if (!g) return null;
+  return (code[0] === "1" ? g.first : g.second) || null;
+}
+
+// For a picks/fasit object, returns the two participants of any knockout match:
+// the 16-dels matchups come from the group/third picks, every later round from the
+// winners its two feeder matches produced.
+function makeMatchGetter(data) {
+  const winnerOf = (id) => data?.matches?.[id] ?? null;
+  const matchTeams = (id) => {
+    // Imported workbooks contain the exact pairing in the adjacent column.
+    // Treat that source as authoritative, including intentionally blank future
+    // rounds. Older participants and manual entries have no `matchups` field,
+    // so they continue to use the calculated fallback below.
+    if (Object.prototype.hasOwnProperty.call(data?.matchups || {}, id)) {
+      const [a = null, b = null] = data.matchups[id] || [];
+      return [a || null, b || null];
+    }
+    const draw = R32_MATCHUPS[id];
+    if (draw) return [resolveBracketTeam(draw[0], data?.groups, data?.thirds), resolveBracketTeam(draw[1], data?.groups, data?.thirds)];
+    const feed = MATCH_FEEDERS[id];
+    return feed ? [winnerOf(feed[0]), winnerOf(feed[1])] : [winnerOf(id), null];
+  };
+  return { winnerOf, matchTeams };
+}
 
 const QUIZ_QUESTIONS = [
   "Antall mål i kampen Norge–Frankrike?",
@@ -301,6 +381,7 @@ function useIsMobile(bp = 640) {
   const [m, setM] = useState(() => typeof window !== "undefined" && window.innerWidth < bp);
   useEffect(() => {
     const on = () => setM(window.innerWidth < bp);
+    on();
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, [bp]);
@@ -506,20 +587,24 @@ function LockIcon({ size = 16 }) {
 // FotMob-style mirrored horizontal bracket (desktop / wide screens). Two halves of
 // the draw converge on a center column holding the final, the bronze match and the
 // champion. Connectors are rounded SVG paths drawn behind the cards.
-function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames = false }) {
-  const CW = 132, ROWH = 33, CH = 2 * ROWH + 1, CONN = 26, CS = CW + CONN, H = 384;
-  const centerX = 3 * CS;
-  const totalW = 6 * CS + CW;
+function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames = false }) {
+  // 1,204px total: fits the standard 1,280px content area without forcing a
+  // horizontal scroll, while preserving enough room for full team names.
+  const CW = 116, ROWH = 33, CH = 2 * ROWH + 1, CONN = 20, CS = CW + CONN, H = 600;
+  const centerX = 4 * CS;
+  const totalW = 8 * CS + CW;
 
   const leftCols = [
-    { x: 0,      cards: BRACKET_TOPOLOGY.left.r16 },
-    { x: CS,     cards: BRACKET_TOPOLOGY.left.r8 },
-    { x: 2 * CS, cards: BRACKET_TOPOLOGY.left.kvart },
+    { x: 0,        label: "16-DEL", ids: BRACKET_TOPOLOGY.left.r32 },
+    { x: CS,       label: "8-DEL",  ids: BRACKET_TOPOLOGY.left.r16 },
+    { x: 2 * CS,   label: "KVART",  ids: BRACKET_TOPOLOGY.left.kvart },
+    { x: 3 * CS,   label: "SEMI",   ids: BRACKET_TOPOLOGY.left.semi },
   ];
   const rightCols = [
-    { x: 4 * CS, cards: BRACKET_TOPOLOGY.right.kvart },
-    { x: 5 * CS, cards: BRACKET_TOPOLOGY.right.r8 },
-    { x: 6 * CS, cards: BRACKET_TOPOLOGY.right.r16 },
+    { x: 5 * CS,   label: "SEMI",   ids: BRACKET_TOPOLOGY.right.semi },
+    { x: 6 * CS,   label: "KVART",  ids: BRACKET_TOPOLOGY.right.kvart },
+    { x: 7 * CS,   label: "8-DEL",  ids: BRACKET_TOPOLOGY.right.r16 },
+    { x: 8 * CS,   label: "16-DEL", ids: BRACKET_TOPOLOGY.right.r32 },
   ];
   const cy = (n, i) => H * (i + 0.5) / n;
 
@@ -534,53 +619,55 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames =
       </div>
     </>
   );
-  const Card = (ids, x, top, accent) => (
-    <div style={{
-      position: "absolute", left: x, top, width: CW, zIndex: 2,
-      background: "var(--bg4)", borderRadius: 10, overflow: "hidden",
-      border: accent ? "1.5px solid var(--accent)" : "1px solid var(--border)",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-    }}>
-      {Row(ids[0] != null ? getSlot(ids[0]) : null, false)}
-      {Row(ids[1] != null ? getSlot(ids[1]) : null, true)}
-    </div>
-  );
+  const Card = (id, x, top) => {
+    const [a, b] = getMatch(id);
+    return (
+      <div style={{
+        position: "absolute", left: x, top, width: CW, zIndex: 2,
+        background: "var(--bg4)", borderRadius: 10, overflow: "hidden",
+        border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+      }}>
+        {Row(a, false)}
+        {Row(b, true)}
+      </div>
+    );
+  };
 
   const paths = [];
   leftCols.forEach((col, k) => {
     if (k === leftCols.length - 1) return;
-    const next = leftCols[k + 1], n = col.cards.length;
-    next.cards.forEach((_, j) => {
-      const c0 = cy(n, 2 * j), c1 = cy(n, 2 * j + 1), py = cy(next.cards.length, j);
+    const next = leftCols[k + 1], n = col.ids.length;
+    next.ids.forEach((_, j) => {
+      const c0 = cy(n, 2 * j), c1 = cy(n, 2 * j + 1), py = cy(next.ids.length, j);
       const childRight = col.x + CW, parentLeft = next.x;
       paths.push(elbowH(childRight, c0, parentLeft, py), elbowH(childRight, c1, parentLeft, py));
     });
   });
   rightCols.forEach((col, k) => {
     if (k === rightCols.length - 1) return;
-    const next = rightCols[k + 1], nn = next.cards.length;
-    col.cards.forEach((_, j) => {
-      const c0 = cy(nn, 2 * j), c1 = cy(nn, 2 * j + 1), py = cy(col.cards.length, j);
+    const next = rightCols[k + 1], nn = next.ids.length;
+    col.ids.forEach((_, j) => {
+      const c0 = cy(nn, 2 * j), c1 = cy(nn, 2 * j + 1), py = cy(col.ids.length, j);
       const parentRight = col.x + CW, childLeft = next.x;
       paths.push(elbowH(childLeft, c0, parentRight, py), elbowH(childLeft, c1, parentRight, py));
     });
   });
-  paths.push(elbowH(leftCols[2].x + CW, H / 2, centerX, H / 2));
+  paths.push(elbowH(leftCols[leftCols.length - 1].x + CW, H / 2, centerX, H / 2));
   paths.push(elbowH(rightCols[0].x, H / 2, centerX + CW, H / 2));
 
   const lbl = {
     position: "absolute", width: CW, textAlign: "center", top: -24,
     fontSize: 9.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase",
   };
-  const colLabels = ["16-DEL", "8-DEL", "KVART"];
+  const [finA, finB] = getMatch(104);
   const finale = getFinale(), bronse = getBronse();
   const finalTop = H / 2 - CH / 2;
 
   return (
     <div style={{ overflowX: "auto", paddingBottom: 4 }}>
       <div style={{ position: "relative", width: totalW, minWidth: totalW, height: H, margin: "32px auto 8px" }}>
-        {colLabels.map((t, i) => <div key={`ll${i}`} style={{ ...lbl, left: leftCols[i].x }}>{t}</div>)}
-        {colLabels.map((t, i) => <div key={`rl${i}`} style={{ ...lbl, left: rightCols[2 - i].x }}>{t}</div>)}
+        {leftCols.map((col, i) => <div key={`ll${i}`} style={{ ...lbl, left: col.x }}>{col.label}</div>)}
+        {rightCols.map((col, i) => <div key={`rl${i}`} style={{ ...lbl, left: col.x }}>{col.label}</div>)}
 
         <svg width={totalW} height={H} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", overflow: "visible" }}>
           <g style={{ stroke: "var(--text5)", strokeWidth: 1.5, fill: "none" }} strokeLinecap="round" strokeLinejoin="round">
@@ -588,11 +675,11 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames =
           </g>
         </svg>
 
-        {leftCols.map((col, k) => col.cards.map((ids, i) => (
-          <React.Fragment key={`lc${k}-${i}`}>{Card(ids, col.x, cy(col.cards.length, i) - CH / 2, false)}</React.Fragment>
+        {leftCols.map((col, k) => col.ids.map((id, i) => (
+          <React.Fragment key={`lc${k}-${i}`}>{Card(id, col.x, cy(col.ids.length, i) - CH / 2)}</React.Fragment>
         )))}
-        {rightCols.map((col, k) => col.cards.map((ids, i) => (
-          <React.Fragment key={`rc${k}-${i}`}>{Card(ids, col.x, cy(col.cards.length, i) - CH / 2, false)}</React.Fragment>
+        {rightCols.map((col, k) => col.ids.map((id, i) => (
+          <React.Fragment key={`rc${k}-${i}`}>{Card(id, col.x, cy(col.ids.length, i) - CH / 2)}</React.Fragment>
         )))}
 
         {/* Champion */}
@@ -608,8 +695,8 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames =
         <div style={{ position: "absolute", left: centerX, top: finalTop, width: CW, zIndex: 3 }}>
           <div style={{ position: "absolute", left: 0, right: 0, top: -22, textAlign: "center" }}><Badge kind="finale">Finale</Badge></div>
           <div style={{ background: "var(--bg4)", borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--accent)", boxShadow: "0 2px 10px rgba(0,0,0,0.12)" }}>
-            {Row(getSlot(101), false)}
-            {Row(getSlot(102), true)}
+            {Row(finA, false)}
+            {Row(finB, true)}
           </div>
         </div>
 
@@ -634,36 +721,38 @@ function renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames =
 // FotMob-style vertical mirrored bracket (mobile / narrow). The top half flows down
 // and the bottom half flows up, meeting at a center row that holds the bronze match,
 // the final and the champion. Connectors are rounded SVG paths behind the cards.
-function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330 }) {
+function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 330 }) {
   const RH = 21, CH = 2 * RH + 1, CV = 30;
-  // Sized to the measured container width: never overflows, and grows to fill the
-  // space on wider views — switching from 3-letter codes to full names when roomy.
-  const HALF_W = Math.min(580, Math.floor(containerW));
-  const CW = Math.min(132, Math.max(52, Math.floor(HALF_W / 4) - 8));
+  // The 16-dels row holds eight matches. Size the canvas to the available phone
+  // width so all eight cards remain reachable without a horizontal crop; only
+  // exceptionally narrow containers use the 260px safety minimum.
+  const HALF_W = Math.min(680, Math.max(Math.floor(containerW), 260));
+  const CW = Math.min(120, Math.max(34, Math.floor(HALF_W / 8) - 2));
   const useCode = CW < 96;
+  const ultraCompact = CW < 58;
   const teamText = (name) => (name ? (useCode ? codeOf(name) : name) : "—");
   const topRounds = [
-    { pairs: BRACKET_TOPOLOGY.left.r16 },
-    { pairs: BRACKET_TOPOLOGY.left.r8 },
-    { pairs: BRACKET_TOPOLOGY.left.kvart },
-    { pairs: [[101]] },
+    { ids: BRACKET_TOPOLOGY.left.r32 },
+    { ids: BRACKET_TOPOLOGY.left.r16 },
+    { ids: BRACKET_TOPOLOGY.left.kvart },
+    { ids: BRACKET_TOPOLOGY.left.semi },
   ];
   const botRounds = [
-    { pairs: [[102]] },
-    { pairs: BRACKET_TOPOLOGY.right.kvart },
-    { pairs: BRACKET_TOPOLOGY.right.r8 },
-    { pairs: BRACKET_TOPOLOGY.right.r16 },
+    { ids: BRACKET_TOPOLOGY.right.semi },
+    { ids: BRACKET_TOPOLOGY.right.kvart },
+    { ids: BRACKET_TOPOLOGY.right.r16 },
+    { ids: BRACKET_TOPOLOGY.right.r32 },
   ];
   const HALF_H = topRounds.length * CH + (topRounds.length - 1) * CV;
 
   const VRow = (name, divider) => (
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
-      <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 7px", height: RH }}>
-        <span style={{ fontSize: 12, width: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={12} /> : <SkelDot s={9} />}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: ultraCompact ? 0 : 5, padding: ultraCompact ? "0 2px" : "0 7px", height: RH }}>
+        {!ultraCompact && <span style={{ fontSize: 12, width: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={12} /> : <SkelDot s={9} />}</span>}
         {name
-          ? <span style={{ flex: 1, minWidth: 0, fontSize: useCode ? 11 : 11.5, fontWeight: 700, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{teamText(name)}</span>
-          : <span style={{ flex: 1, minWidth: 0 }}><SkelBar w={38} /></span>}
+          ? <span style={{ flex: 1, minWidth: 0, fontSize: ultraCompact ? 9.5 : useCode ? 11 : 11.5, fontWeight: 700, letterSpacing: ultraCompact ? 0 : useCode ? 0.3 : 0, textAlign: ultraCompact ? "center" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{teamText(name)}</span>
+          : <span style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}><SkelBar w={ultraCompact ? 24 : 38} /></span>}
       </div>
     </>
   );
@@ -677,7 +766,7 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
     const paths = [];
     rounds.forEach((round, ri) => {
       if (ri === rounds.length - 1) return;
-      const cur = round.pairs.length, nxt = rounds[ri + 1].pairs.length;
+      const cur = round.ids.length, nxt = rounds[ri + 1].ids.length;
       const yCurBot = ri * (CH + CV) + CH;
       const yNxtTop = (ri + 1) * (CH + CV);
       const xc = (j, n) => (j + 0.5) * HALF_W / n;
@@ -697,12 +786,14 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
           </g>
         </svg>
         {rounds.map((round, ri) => {
-          const N = round.pairs.length, y = ri * (CH + CV);
-          return round.pairs.map((slots, j) => {
+          const N = round.ids.length, y = ri * (CH + CV);
+          return round.ids.map((id, j) => {
             const cx = (j + 0.5) * HALF_W / N;
+            const [a, b] = getMatch(id);
             return (
               <div key={`${ri}-${j}`} style={{ position: "absolute", left: cx - CW / 2, top: y, zIndex: 2, ...cardStyle(false) }}>
-                {slots.map((id, si) => <React.Fragment key={si}>{VRow(id != null ? getSlot(id) : null, si > 0)}</React.Fragment>)}
+                {VRow(a, false)}
+                {VRow(b, true)}
               </div>
             );
           });
@@ -711,6 +802,7 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
     );
   };
 
+  const [finA, finB] = getMatch(104);
   const finale = getFinale(), bronse = getBronse();
 
   return (
@@ -726,8 +818,8 @@ function renderBracketVertical({ getSlot, getBronse, getFinale, containerW = 330
           <div style={{ textAlign: "center" }}>
             <div style={{ marginBottom: 5 }}><Badge kind="finale">Finale</Badge></div>
             <div style={cardStyle(true)}>
-              {VRow(getSlot(101), false)}
-              {VRow(getSlot(102), true)}
+              {VRow(finA, false)}
+              {VRow(finB, true)}
             </div>
           </div>
           <div style={{ textAlign: "center", width: CW }}>
@@ -947,8 +1039,24 @@ function pickResults(picks, fasit) {
 // EXCEL-PARSING
 // ─────────────────────────────────────────────
 // A saved workbook can contain a cover or instruction sheet before the answer
-// sheet. The old importer always used SheetNames[0], so the fixed knockout-cell
-// map could be read from the wrong sheet even though the workbook was valid.
+// sheet. We identify the fixed VM 2026 answer sheet by its round headings, then
+// use filled team picks only to break ties between matching sheets.
+const ANSWER_SHEET_SIGNATURE = [
+  ["A1", "gruppespill"],
+  ["D1", "16-delsfinaler"],
+  ["G1", "8-delsfinaler"],
+  ["J1", "kvartfinaler"],
+  ["M1", "semifinaler"],
+  ["Q1", "bronsefinale"],
+  ["T1", "finale"],
+];
+
+const normalizeExcelLabel = (value) => String(value || "")
+  .replace(/\u00a0/g, " ")
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g, " ");
+
 function isExcelTeamPick(value) {
   const key = normTeam(value);
   return Boolean(key && CANON_LOOKUP[key]);
@@ -967,7 +1075,7 @@ function answerSheet(wb) {
     ...GROUP_KEYS.flatMap((g) => [CELLS.groups[g].first, CELLS.groups[g].second]),
     ...CELLS.thirds,
   ];
-  let best = { sheet: wb.Sheets[wb.SheetNames[0]], score: 0 };
+  let best = null;
 
   for (const sheetName of wb.SheetNames) {
     const sheet = wb.Sheets[sheetName];
@@ -975,13 +1083,19 @@ function answerSheet(wb) {
       const cell = sheet?.[addr];
       return cell?.v === undefined || cell?.v === null ? "" : String(cell.v).trim();
     };
+    const isTemplate = ANSWER_SHEET_SIGNATURE.every(([addr, label]) =>
+      normalizeExcelLabel(read(addr)).startsWith(label)
+    );
+    if (!isTemplate) continue;
+
     // Knockout selections are weighted more heavily: they are the columns
     // most likely to be present in a separate answer sheet.
     const score = knockoutAddresses.filter((addr) => isExcelTeamPick(read(addr))).length * 3
       + groupAddresses.filter((addr) => isExcelTeamPick(read(addr))).length;
-    if (score > best.score) best = { sheet, score };
+    if (!best || score > best.score) best = { sheet, score };
   }
 
+  if (!best) throw new Error("Fant ikke et VM 2026-svarark med riktig Excel-mal.");
   return best.sheet;
 }
 
@@ -993,23 +1107,25 @@ function parseWorkbook(wb, filename) {
     const v = String(c.v).trim();
     return v === "0" ? "" : v;
   };
+  const team = (addr) => canonicalTeam(val(addr));
 
   const picks = {
-    groups: {}, thirds: [], matches: {}, sfLosers: {}, bronse: "", finale: "", quiz: [],
+    groups: {}, thirds: [], matches: {}, matchups: {}, sfLosers: {}, bronse: "", finale: "", quiz: [],
   };
   for (const g of GROUP_KEYS) {
-    picks.groups[g] = { first: val(CELLS.groups[g].first), second: val(CELLS.groups[g].second) };
+    picks.groups[g] = { first: team(CELLS.groups[g].first), second: team(CELLS.groups[g].second) };
   }
-  picks.thirds = CELLS.thirds.map(val);
-  for (const [m, addr] of Object.entries(CELLS.r16)) picks.matches[m] = val(addr);
-  for (const [m, addr] of Object.entries(CELLS.r8)) picks.matches[m] = val(addr);
-  for (const [m, addr] of Object.entries(CELLS.kvart)) picks.matches[m] = val(addr);
-  picks.matches["101"] = val(CELLS.semi[101].win);
-  picks.matches["102"] = val(CELLS.semi[102].win);
-  picks.sfLosers["101"] = val(CELLS.semi[101].lose);
-  picks.sfLosers["102"] = val(CELLS.semi[102].lose);
-  picks.bronse = val(CELLS.bronse);
-  picks.finale = val(CELLS.finale);
+  picks.thirds = CELLS.thirds.map(team);
+  for (const [m, addr] of Object.entries(CELLS.r16)) picks.matches[m] = team(addr);
+  for (const [m, addr] of Object.entries(CELLS.r8)) picks.matches[m] = team(addr);
+  for (const [m, addr] of Object.entries(CELLS.kvart)) picks.matches[m] = team(addr);
+  picks.matches["101"] = team(CELLS.semi[101].win);
+  picks.matches["102"] = team(CELLS.semi[102].win);
+  picks.sfLosers["101"] = team(CELLS.semi[101].lose);
+  picks.sfLosers["102"] = team(CELLS.semi[102].lose);
+  picks.bronse = team(CELLS.bronse);
+  picks.finale = team(CELLS.finale);
+  for (const [m, addresses] of Object.entries(MATCHUP_CELLS)) picks.matchups[m] = addresses.map(team);
   picks.quiz = CELLS.quiz.map(val);
 
   // Navn fra filnavn: "Fotball_VM_2026_konkurranse_-_Ola_Nordmann.xlsx"
@@ -1030,7 +1146,7 @@ const TEAM_NAME_MAP = {
   "czechia": "Tsjekkia", "czech republic": "Tsjekkia",
   "mexico": "Mexico", "usa": "USA", "united states": "USA",
   "canada": "Canada", "brazil": "Brasil", "brasil": "Brasil",
-  "morocco": "Marokko", "scotland": "Skottland", "haiti": "Haiti",
+  "morocco": "Marokko", "marocco": "Marokko", "scotland": "Skottland", "skotland": "Skottland", "haiti": "Haiti",
   "paraguay": "Paraguay", "australia": "Australia",
   "turkey": "Tyrkia", "turkiye": "Tyrkia",
   "germany": "Tyskland", "deutschland": "Tyskland",
@@ -1476,7 +1592,7 @@ export default function App() {
 // DELTAKERE — import + manuell redigering
 // ─────────────────────────────────────────────
 function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
-  const narrowBracket = useIsMobile(1024);
+  const narrowBracket = useIsMobile(1180);
   const [newName, setNewName] = useState("");
   const [importMsg, setImportMsg] = useState("");
   const [expandedId, setExpandedId] = useState(null);
@@ -1526,7 +1642,8 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
-    let added = 0, updated = 0, failed = 0;
+    let added = 0, updated = 0;
+    const failedFiles = [];
     let next = [...participants];
     for (const file of files) {
       try {
@@ -1547,11 +1664,12 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
         }
       } catch (err) {
         console.error("Import feilet for", file.name, err);
-        failed++;
+        failedFiles.push(file.name);
       }
     }
-    setParticipants(next);
-    setImportMsg(`Importert: ${added} nye, ${updated} oppdatert${failed ? `, ${failed} feilet` : ""}`);
+    if (added || updated) setParticipants(next);
+    const failedText = failedFiles.length ? ` Ikke importert: ${failedFiles.join(", ")}.` : "";
+    setImportMsg(`Importert: ${added} nye, ${updated} oppdatert.${failedText}`);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -1713,11 +1831,11 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
                                     <div style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Sluttspill</div>
                                     {narrowBracket
                                       ? <VerticalBracket
-                                          getSlot={id => p.picks.matches?.[id] ?? null}
+                                          getMatch={makeMatchGetter(p.picks).matchTeams}
                                           getBronse={() => p.picks.bronse}
                                           getFinale={() => p.picks.finale} />
                                       : renderBracketHorizontal({
-                                          getSlot: id => p.picks.matches?.[id] ?? null,
+                                          getMatch: makeMatchGetter(p.picks).matchTeams,
                                           getBronse: () => p.picks.bronse,
                                           getFinale: () => p.picks.finale,
                                         })}
@@ -1780,11 +1898,14 @@ const STATUS_COLOR = { hit: "var(--accent)", bonus: "#E0A106", miss: "var(--text
 const KNOCKOUT_SECTION_KEYS = new Set(["r16", "r8", "kvart", "semi", "bf"]);
 
 function PredictionBracket({ picks }) {
-  const narrow = useIsMobile(940);
-  const hasPredictions = Object.values(picks?.matches || {}).some(Boolean) || picks?.bronse || picks?.finale;
+  const narrow = useIsMobile(1180);
+  const hasPredictions = Object.values(picks?.matchups || {}).some((pair) => pair?.some(Boolean))
+    || Object.values(picks?.matches || {}).some(Boolean)
+    || picks?.bronse
+    || picks?.finale;
   if (!hasPredictions) return null;
 
-  const getSlot = (id) => picks.matches?.[id] ?? null;
+  const getMatch = makeMatchGetter(picks).matchTeams;
   const getBronse = () => picks.bronse || null;
   const getFinale = () => picks.finale || null;
 
@@ -1795,8 +1916,8 @@ function PredictionBracket({ picks }) {
         <div style={{ marginTop: 3, color: "var(--text4)", fontSize: 11.5 }}>Tips hele veien til finalen</div>
       </div>
       {narrow
-        ? <VerticalBracket getSlot={getSlot} getBronse={getBronse} getFinale={getFinale} />
-        : renderBracketHorizontal({ getSlot, getBronse, getFinale, compactNames: true })}
+        ? <VerticalBracket getMatch={getMatch} getBronse={getBronse} getFinale={getFinale} />
+        : renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames: true })}
     </section>
   );
 }
@@ -1896,11 +2017,18 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
   );
 }
 
+function leaderboardGridColumns(isMobile, roundColumnWidth) {
+  return isMobile
+    ? "28px 12px minmax(0, 1fr) 44px 14px"
+    : `28px 12px minmax(140px, 1fr) repeat(${ROUNDS.length}, ${roundColumnWidth}px) 44px 14px`;
+}
+
 function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open, onToggle, fasit, showBonus, excluded = false, divider = false }) {
   return (
     <div style={{ borderBottom: divider ? "1px solid var(--border)" : "none" }}>
       <div onClick={onToggle} style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", cursor: "pointer",
+        display: "grid", gridTemplateColumns: leaderboardGridColumns(isMobile, roundColumnWidth), columnGap: 12,
+        alignItems: "center", padding: "16px 20px", cursor: "pointer",
         background: open ? "var(--bg2)" : excluded ? "color-mix(in srgb, var(--bg2) 64%, transparent)" : "transparent",
         transition: "background .15s",
       }}>
@@ -1908,14 +2036,13 @@ function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open,
           {excluded ? "–" : rank}
         </span>
         <span style={{ ...S.dot, background: participant.color, width: 12, height: 12, opacity: excluded ? 0.65 : 1 }} />
-        <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 16, color: excluded ? "var(--text2)" : "var(--text1)" }}>{firstName(participant.name)}</span>
+        <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700, fontSize: 16, color: excluded ? "var(--text2)" : "var(--text1)" }}>{firstName(participant.name)}</span>
           {excluded && <span style={{ padding: "3px 7px", borderRadius: 5, background: "var(--bg4)", color: "var(--text3)", fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase" }}>Ekskludert</span>}
         </span>
         {!isMobile && ROUNDS.map((r) => (
-          <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 3, width: roundColumnWidth }}>
+          <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", minWidth: 0 }}>
             <span style={{ color: excluded ? "var(--text3)" : "var(--text1)", fontWeight: 700, fontSize: 13 }}>{participant.scores[r.key] || 0}</span>
-            <span style={{ fontSize: 10, color: "var(--text4)", whiteSpace: "nowrap" }}>{r.short}</span>
           </span>
         ))}
         <span style={{ fontWeight: 900, fontSize: 20, color: excluded ? "var(--text3)" : "var(--accent)", minWidth: 44, textAlign: "right" }}>
@@ -1930,7 +2057,9 @@ function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open,
 }
 
 function Stilling({ participants, fasit, showBonus }) {
-  const isMobile = useIsMobile();
+  // Show the focused rank/player/total layout before the per-round columns
+  // become crowded in a narrowed desktop or tablet window.
+  const isMobile = useIsMobile(1100);
   const [openId, setOpenId] = useState(null);
   const roundColumnWidth = 68;
   const toTotal = (p) => ({ ...p, total: cumulative(p, ROUNDS.length - 1) + (showBonus ? p.bonus || 0 : 0) });
@@ -1960,16 +2089,17 @@ function Stilling({ participants, fasit, showBonus }) {
       </div>
       <div style={{ position: "relative", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden" }}>
         {!isMobile && <div style={{
-          display: "flex", alignItems: "center", gap: 12, padding: "14px 20px 12px",
+          display: "grid", gridTemplateColumns: leaderboardGridColumns(false, roundColumnWidth), columnGap: 12,
+          alignItems: "center", padding: "14px 20px 12px",
           borderBottom: "1px solid var(--border)", color: "var(--text3)", fontSize: 10.5,
           fontWeight: 800, letterSpacing: 0.7, textTransform: "uppercase",
         }}>
-          <span style={{ width: 28 }} />
-          <span style={{ width: 12 }} />
-          <span style={{ flex: 1 }}>Spiller</span>
-          {ROUNDS.map((r) => <span key={r.key} style={{ width: roundColumnWidth, textAlign: "right" }}>{r.short}</span>)}
-          <span style={{ minWidth: 44, textAlign: "right", color: "var(--text3)" }}>Totalt</span>
-          <span style={{ width: 14 }} />
+          <span />
+          <span />
+          <span>Spiller</span>
+          {ROUNDS.map((r) => <span key={r.key} style={{ textAlign: "right" }}>{r.short}</span>)}
+          <span style={{ textAlign: "right", color: "var(--text3)" }}>Totalt</span>
+          <span />
         </div>}
         {ranked.map((p, i) => (
           <LeaderboardEntry key={p.id} participant={p} rank={i + 1} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
@@ -2410,26 +2540,26 @@ function GeometricRower({ stroke }) {
 }
 
 function RowingSupporter() {
-  const [serverCount, setServerCount] = useState(null);
-  const [pendingRows, setPendingRows] = useState(0);
+  const [count, setCount] = useState(null);   // displayed total; null while first load is pending
   const [error, setError] = useState("");
-  const [stroke, setStroke] = useState(0);
+  const [stroke, setStroke] = useState(0);     // drives the rowing animation + chant
   const queueRef = useRef(Promise.resolve());
+
+  // Strokes never un-happen, so the total only ever climbs. Lift towards any count
+  // the server reports, but never let an eventually-consistent (briefly stale) read
+  // pull the number back below what the supporter already sees.
+  const liftTo = (next) => setCount((prev) => Math.max(prev ?? 0, next));
 
   useEffect(() => {
     let active = true;
     supporterRows()
-      .then((count) => { if (active) setServerCount(count); })
+      .then((total) => { if (active) liftTo(total); })
       .catch(() => { if (active) setError("Kunne ikke hente årets total."); });
     return () => { active = false; };
   }, []);
 
-  const settleRow = () => {
-    setPendingRows((pending) => Math.max(0, pending - 1));
-  };
-
   const row = () => {
-    setPendingRows((pending) => pending + 1);
+    setCount((prev) => (prev ?? 0) + 1);   // optimistic + immediate; stays put even if the server read lags
     setStroke((value) => value + 1);
     setError("");
 
@@ -2437,22 +2567,15 @@ function RowingSupporter() {
       .catch(() => undefined)
       .then(async () => {
         try {
-          const count = await supporterRows("POST");
-          settleRow();
-          setServerCount((current) => Math.max(current || 0, count));
+          liftTo(await supporterRows("POST"));
         } catch {
-          settleRow();
+          setCount((prev) => Math.max(0, (prev ?? 1) - 1));   // the stroke didn't land — take it back
           setError("Åretaket ble ikke telt. Prøv igjen.");
-          try {
-            const count = await supporterRows();
-            setServerCount(count);
-          } catch {}
         }
       });
   };
 
-  const count = (serverCount || 0) + pendingRows;
-  const formattedCount = serverCount === null && pendingRows === 0 ? "…" : new Intl.NumberFormat("nb-NO").format(count);
+  const formattedCount = count === null ? "…" : new Intl.NumberFormat("nb-NO").format(count);
 
   return (
     <div className="supporter-rower">
@@ -3144,7 +3267,7 @@ function PatternSectionLabel({ children, theme }) {
 }
 
 function FasitView({ fasit, showBonus, theme }) {
-  const narrowBracket = useIsMobile(1024);
+  const narrowBracket = useIsMobile(1180);
   const isMobile = useIsMobile();
   const secStyle = isMobile ? { ...S.fasitSection, padding: 13 } : S.fasitSection;
   const anyGroupData = GROUP_KEYS.some((g) => fasit.groups[g].first);
@@ -3197,11 +3320,11 @@ function FasitView({ fasit, showBonus, theme }) {
         </div>
         {narrowBracket
           ? <VerticalBracket
-              getSlot={id => fasit.matches?.[id] ?? null}
+              getMatch={makeMatchGetter(fasit).matchTeams}
               getBronse={() => fasit.bronse}
               getFinale={() => fasit.finale} />
           : renderBracketHorizontal({
-              getSlot: id => fasit.matches?.[id] ?? null,
+              getMatch: makeMatchGetter(fasit).matchTeams,
               getBronse: () => fasit.bronse,
               getFinale: () => fasit.finale,
         })}
@@ -4158,7 +4281,7 @@ const CSS = `
   @keyframes voyageShipBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
   .home-welcome { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; }
   .supporter-rower { display: flex; align-items: center; gap: 10px; min-width: 212px; }
-  .supporter-rower-button { appearance: none; border: 0; padding: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-size: 11px; font-weight: 900; letter-spacing: .85px; text-align: center; }
+  .supporter-rower-button { appearance: none; border: 0; padding: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-size: 11px; font-weight: 900; letter-spacing: .85px; text-align: center; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .supporter-rower-chant { display: inline-flex; align-items: baseline; }
   .supporter-rower-letter { display: inline-block; animation: supporterChant .82s ease-in-out infinite; animation-delay: var(--chant-delay); }
   .supporter-rower-button:hover { color: var(--text1); }
