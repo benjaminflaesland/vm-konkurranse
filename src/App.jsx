@@ -11,6 +11,21 @@ import roadVmNovember from "./assets/road-vm-november.jpg";
 import roadVmMilan from "./assets/road-vm-milan.webp";
 import roadVmArrived from "./assets/road-vm-arrived.webp";
 
+// Every photo used by "Veien til VM". Preloaded as soon as the bundle loads so the
+// cards never flash a blank tile while the image fetches/decodes on refresh.
+const VOYAGE_IMAGES = [
+  roadVm1998, roadVmOpening, roadVmItaly, roadVmMoldova, roadVmNovember, roadVmMilan, roadVmArrived,
+];
+if (typeof document !== "undefined") {
+  for (const href of VOYAGE_IMAGES) {
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.href = href;
+    document.head.appendChild(link);
+  }
+}
+
 // ─────────────────────────────────────────────
 // TURNERINGSDATA
 // ─────────────────────────────────────────────
@@ -191,6 +206,18 @@ const PUBLIC_CACHE_KEY = "vm2026_public_cache_v1";
 const LAST_PUBLIC_MODE_KEY = "vm2026_last_public_mode";
 const SUPPORTER_ROW_ENDPOINT = "/.netlify/functions/supporter-row";
 const SUPPORTER_ROW_DEV_KEY = "vm2026_supporter_rows_dev";
+const SUPPORTER_COUNT_CACHE_KEY = "vm2026_supporter_count_cache";
+
+// Last total we showed, kept so a refresh or tab switch can paint it immediately
+// instead of dropping to a briefly-stale server read and climbing back up.
+function readCachedSupporterCount() {
+  try {
+    const n = Number(localStorage.getItem(SUPPORTER_COUNT_CACHE_KEY));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
 const PUBLIC_MODES = new Set(["hjem", "stilling", "fasit-view", "vei-vm", "present"]);
 const DEFAULT_CEREMONY = { phase: "rounds", step: 0, bonusRevealed: 0 };
 const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremony: DEFAULT_CEREMONY };
@@ -559,6 +586,17 @@ function TrophyIcon({ size = 30 }) {
       <path d="M6 3.5h12V8a6 6 0 0 1-12 0V3.5Z" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
       <path d="M6 5H4a2 2 0 0 0 0 4h2.3M18 5h2a2 2 0 0 1 0 4h-2.3" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" />
       <path d="M12 14v3.2M8.5 20.5h7M9 20.5c.2-1.7 1.1-2.7 3-3.3 1.9.6 2.8 1.6 3 3.3" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Flat gold crown (solid body + detached base bar) marking the current leader.
+function CrownIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path d="M4 7 L8.6 10.8 L12 4.6 L15.4 10.8 L20 7 L20 15 L4 15 Z"
+        fill="#EAB948" stroke="#EAB948" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" />
+      <rect x="5" y="17.3" width="14" height="2.9" rx="1.45" fill="#EAB948" />
     </svg>
   );
 }
@@ -1585,6 +1623,9 @@ export default function App() {
             onExit={() => setMode("stilling")} />
         : <LockedCeremony />
       )}
+      {mode !== "present" && (
+        <footer className="site-foot" />
+      )}
     </div>
   );
 }
@@ -2036,7 +2077,9 @@ function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open,
         <span style={{ width: 28, fontWeight: 800, fontSize: 18, color: excluded ? "var(--text4)" : rank <= 3 ? "var(--accent)" : "var(--text3)" }}>
           {excluded ? "–" : rank}
         </span>
-        <span style={{ ...S.dot, background: participant.color, width: 12, height: 12, opacity: excluded ? 0.65 : 1 }} />
+        {!excluded && rank === 1
+          ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", marginLeft: -2 }}><CrownIcon size={16} /></span>
+          : <span style={{ ...S.dot, background: participant.color, width: 12, height: 12, opacity: excluded ? 0.65 : 1 }} />}
         <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700, fontSize: 16, color: excluded ? "var(--text2)" : "var(--text1)" }}>{firstName(participant.name)}</span>
         </span>
@@ -2536,8 +2579,146 @@ function GeometricRower({ stroke }) {
   );
 }
 
+let hornAudioCtx = null;
+let hornBuffer = null;
+async function playVikingHorn() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    hornAudioCtx = hornAudioCtx || new AC();
+    const ctx = hornAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+    if (!hornBuffer) {
+      const res = await fetch("/assets/horn.mp3");
+      const ab = await res.arrayBuffer();
+      hornBuffer = await ctx.decodeAudioData(ab);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = hornBuffer;
+    src.connect(ctx.destination);
+    src.start();
+    return;
+  } catch {}
+}
+// fallback synthesis (never reached if MP3 loads)
+function _playVikingHornSynth() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    hornAudioCtx = hornAudioCtx || new AC();
+    const ctx = hornAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+    const t0 = ctx.currentTime;
+    const dur = 1.7;
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, t0);
+    master.gain.exponentialRampToValueAtTime(0.6, t0 + 0.07);
+    master.gain.setValueAtTime(0.55, t0 + dur - 0.5);
+    master.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    master.connect(ctx.destination);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.Q.value = 1.5;
+    filter.frequency.setValueAtTime(520, t0);
+    filter.frequency.exponentialRampToValueAtTime(1950, t0 + 0.26);
+    filter.connect(master);
+
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 7;
+    lfo.connect(lfoGain);
+
+    const fundamental = 118;
+    const voices = [
+      { type: "sawtooth", mult: 1, detune: -8, gain: 0.5 },
+      { type: "sawtooth", mult: 1, detune: 9, gain: 0.5 },
+      { type: "square", mult: 1, detune: 0, gain: 0.13 },
+      { type: "sawtooth", mult: 2, detune: 5, gain: 0.17 },
+      { type: "sine", mult: 0.5, detune: 0, gain: 0.26 },
+    ];
+    for (const v of voices) {
+      const osc = ctx.createOscillator();
+      osc.type = v.type;
+      const base = fundamental * v.mult;
+      osc.frequency.setValueAtTime(base * 0.84, t0);
+      osc.frequency.exponentialRampToValueAtTime(base, t0 + 0.11);
+      osc.frequency.linearRampToValueAtTime(base * 0.965, t0 + dur);
+      osc.detune.value = v.detune;
+      lfoGain.connect(osc.detune);
+      const g = ctx.createGain();
+      g.gain.value = v.gain;
+      osc.connect(g).connect(filter);
+      osc.start(t0);
+      osc.stop(t0 + dur);
+    }
+    lfo.start(t0);
+    lfo.stop(t0 + dur);
+  } catch {}
+}
+
+function VikingHorn() {
+  const [blow, setBlow] = useState(0);
+  const sound = () => { playVikingHorn(); setBlow((v) => v + 1); };
+  return (
+    <div className="viking-horn">
+      <button type="button" className="viking-horn-button" onClick={sound} aria-label="Blås i vikinghornet">
+        <svg key={blow} className={`viking-horn-svg${blow ? " is-blowing" : ""}`} viewBox="0 0 92 58" aria-hidden="true">
+          <defs>
+            <linearGradient id="vhBrass" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#F2D688" />
+              <stop offset="0.42" stopColor="#CB9E4B" />
+              <stop offset="1" stopColor="#7C5820" />
+            </linearGradient>
+            <linearGradient id="vhBand" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#CFA254" />
+              <stop offset="1" stopColor="#6A4818" />
+            </linearGradient>
+            <clipPath id="vhBody">
+              <path d="M28 11 C 52 5, 74 21, 82 46 C 70 39, 46 32, 32 30 C 23 28, 22 15, 28 11 Z" />
+            </clipPath>
+          </defs>
+          {blow > 0 && (
+            <g className="viking-horn-waves" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round">
+              <path d="M24 16 C 17 21, 17 27, 24 32" />
+              <path d="M18 11 C 8 18, 8 30, 18 37" />
+              <path d="M12 6 C -1 16, -1 32, 12 42" />
+            </g>
+          )}
+          <g className="viking-horn-body">
+            <path d="M28 11 C 52 5, 74 21, 82 46 C 70 39, 46 32, 32 30 C 23 28, 22 15, 28 11 Z"
+              fill="url(#vhBrass)" stroke="#5C3D14" strokeWidth="2.1" strokeLinejoin="round" />
+            <path d="M32 13 C 52 9, 69 22, 77 40" fill="none" stroke="#FBEBBE" strokeWidth="1.8" strokeOpacity="0.5" strokeLinecap="round" />
+            <path d="M44 22 C 55 23, 65 29, 72 38" fill="none" stroke="#5C3D14" strokeWidth="1.1" strokeOpacity="0.35" strokeLinecap="round" />
+            {/* ornate collar near the mouth, clipped to the horn outline */}
+            <g clipPath="url(#vhBody)">
+              <path d="M26 8 L42 11 L40 34 L23 32 Z" fill="url(#vhBand)" />
+              <path d="M31 9 L29 33" stroke="#46300F" strokeWidth="2.4" />
+              <path d="M38 11 L36 34" stroke="#46300F" strokeWidth="2.4" />
+              <g fill="#F0CE82">
+                <circle cx="34" cy="15" r="1.05" />
+                <circle cx="33.4" cy="20.5" r="1.05" />
+                <circle cx="32.8" cy="26" r="1.05" />
+                <circle cx="32.2" cy="31" r="1.05" />
+              </g>
+            </g>
+            {/* bright rim around the mouth opening */}
+            <ellipse cx="29" cy="20.5" rx="3.3" ry="9.6" transform="rotate(-14 29 20.5)" fill="#EBCC7C" stroke="#5C3D14" strokeWidth="2" />
+            {/* finial tip */}
+            <path d="M80 44 l3.4 -0.6 2 3.2 -2.4 3 -3.6 -1.4 Z" fill="url(#vhBand)" stroke="#46300F" strokeWidth="1.2" strokeLinejoin="round" />
+            <circle cx="86.4" cy="50.4" r="2.7" fill="url(#vhBand)" stroke="#46300F" strokeWidth="1.2" />
+          </g>
+        </svg>
+        <span className="viking-horn-label">Blås i hornet</span>
+      </button>
+    </div>
+  );
+}
+
 function RowingSupporter() {
-  const [count, setCount] = useState(null);   // displayed total; null while first load is pending
+  const [count, setCount] = useState(readCachedSupporterCount);   // seeded from cache so refresh/tab-switch never dips
   const [error, setError] = useState("");
   const [stroke, setStroke] = useState(0);     // drives the rowing animation + chant
   const queueRef = useRef(Promise.resolve());
@@ -2546,6 +2727,12 @@ function RowingSupporter() {
   // the server reports, but never let an eventually-consistent (briefly stale) read
   // pull the number back below what the supporter already sees.
   const liftTo = (next) => setCount((prev) => Math.max(prev ?? 0, next));
+
+  // Remember the latest total across reloads and tab switches.
+  useEffect(() => {
+    if (count === null) return;
+    try { localStorage.setItem(SUPPORTER_COUNT_CACHE_KEY, String(count)); } catch {}
+  }, [count]);
 
   useEffect(() => {
     let active = true;
@@ -3063,10 +3250,13 @@ function NorgesVeiTilVM() {
 
   return (
     <div style={S.adminWrap}>
-      <div style={{ margin: "4px 0 18px", maxWidth: 640 }}>
+      <div style={{ margin: "4px 0 18px", maxWidth: 720 }}>
         <div style={{ color: "var(--accent)", fontSize: 11, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>Landslagsskipets rute</div>
-        <h1 style={{ margin: 0, color: "var(--text1)", fontSize: isMobile ? 27 : 36, lineHeight: 1.08, letterSpacing: -0.9 }}>Norges vei til VM</h1>
-        <p style={{ margin: "10px 0 0", color: "var(--text2)", fontSize: 15, lineHeight: 1.55 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <h1 style={{ margin: 0, color: "var(--text1)", fontSize: isMobile ? 27 : 36, lineHeight: 1.08, letterSpacing: -0.9 }}>Norges vei til VM</h1>
+          <div style={{ flexShrink: 0 }}><VikingHorn /></div>
+        </div>
+        <p style={{ margin: "10px 0 0", color: "var(--text2)", fontSize: 15, lineHeight: 1.55, maxWidth: 640 }}>
           Fra Marseille i 1998 til verdens største scene i USA. Skroll deg nedover og følg langskipet over havet — fra kvalifiseringen til VM 2026.
         </p>
       </div>
@@ -4300,6 +4490,20 @@ const CSS = `
   .supporter-rower-count strong { color: var(--accent); font-size: 28px; line-height: 1; letter-spacing: -.8px; }
   .supporter-rower-count span { margin-top: 4px; color: var(--text2); font-size: 11px; font-weight: 800; line-height: 1.2; }
   .supporter-rower-count small { margin-top: 5px; color: #E0564F; font-size: 10px; font-weight: 700; line-height: 1.25; }
+  .site-foot { display: flex; justify-content: center; padding: 26px 16px 34px; margin-top: 22px; border-top: 1px solid var(--border); }
+  .viking-horn { display: flex; }
+  .viking-horn-button { display: flex; flex-direction: column; align-items: center; gap: 4px; appearance: none; border: 0; padding: 0; background: transparent; cursor: pointer; opacity: .82; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: opacity .15s; }
+  .viking-horn-button:hover { opacity: 1; }
+  .viking-horn-svg { display: block; width: 76px; height: 48px; overflow: visible; filter: drop-shadow(0 3px 6px rgba(0,0,0,.22)); transform: rotate(70deg) scaleY(-1); transition: transform .15s; }
+  .viking-horn-button:hover .viking-horn-svg { transform: translateY(-2px) rotate(70deg) scaleY(-1); }
+  .viking-horn-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 8px; }
+  .viking-horn-body { transform-box: fill-box; transform-origin: 80% 80%; }
+  .viking-horn-svg.is-blowing .viking-horn-body { animation: hornBlow .62s cubic-bezier(.36,.7,.3,1); }
+  .viking-horn-waves { transform-box: fill-box; transform-origin: 100% 50%; animation: hornWaves .7s ease-out forwards; }
+  .viking-horn-label { font-size: 9.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--text4); }
+  .viking-horn-button:hover .viking-horn-label { color: var(--accent); }
+  @keyframes hornBlow { 0% { transform: rotate(0); } 18% { transform: rotate(-9deg); } 45% { transform: rotate(4deg); } 70% { transform: rotate(-2deg); } 100% { transform: rotate(0); } }
+  @keyframes hornWaves { 0% { opacity: 0; transform: translateX(5px) scale(.55); } 22% { opacity: .9; } 100% { opacity: 0; transform: translateX(-7px) scale(1.18); } }
   input[type=number]::-webkit-inner-spin-button { opacity: .4; }
   select option { background: #1C1C1E; }
   @media (max-width: 700px) {
@@ -4326,7 +4530,7 @@ const CSS = `
     .supporter-rower { justify-content: flex-start; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .voyage-scene, .voyage-boat, .voyage-oar, .voyage-wave-line, .voyage-bob, .supporter-rower-geometry-float, .supporter-rower-geometry-body, .supporter-rower-geometry-faroar, .supporter-rower-geometry-nearoar, .supporter-rower-letter { animation: none !important; }
+    .voyage-scene, .voyage-boat, .voyage-oar, .voyage-wave-line, .voyage-bob, .supporter-rower-geometry-float, .supporter-rower-geometry-body, .supporter-rower-geometry-faroar, .supporter-rower-geometry-nearoar, .supporter-rower-letter, .viking-horn-body, .viking-horn-waves { animation: none !important; }
     .voyage-boat, .voyage-rail-progress { transition: none !important; }
     .bonus-pop, .bonus-star, .podium-rise, .confetti-piece, .ceremony-copy, .ceremony-prize-stage, .ceremony-prize-aura { animation: none !important; }
   }
