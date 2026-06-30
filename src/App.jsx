@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import "flag-icons/css/flag-icons.min.css";
 import vmTrophyMark from "./assets/vm-trophy-mark-26-header.png";
 import norseKnitBand from "./assets/norse-knit-band.png";
@@ -159,11 +159,10 @@ function resolveBracketTeam(code, groups, thirds) {
 function makeMatchGetter(data) {
   const winnerOf = (id) => data?.matches?.[id] ?? null;
   const matchTeams = (id) => {
-    // Imported workbooks contain the exact pairing in the adjacent column.
-    // Treat that source as authoritative, including intentionally blank future
-    // rounds. Older participants and manual entries have no `matchups` field,
-    // so they continue to use the calculated fallback below.
-    if (Object.prototype.hasOwnProperty.call(data?.matchups || {}, id)) {
+    // Imported workbooks contain exact first-round pairings in the adjacent
+    // column. For later rounds, derive the pair from prior winners so stale
+    // formula values cannot drift from the visible bracket path.
+    if (!MATCH_FEEDERS[id] && Object.prototype.hasOwnProperty.call(data?.matchups || {}, id)) {
       const [a = null, b = null] = data.matchups[id] || [];
       return [a || null, b || null];
     }
@@ -491,6 +490,78 @@ function emptyFasit() {
     finale: "",
     quiz: Array(10).fill(""),
   };
+}
+
+function mergeLiveResults(currentFasit, liveResults) {
+  const base = { ...emptyFasit(), ...(currentFasit || {}) };
+  const merged = {
+    ...base,
+    groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, { ...(base.groups?.[g] || {}) }])),
+    thirds: [...(base.thirds || [])],
+    matches: { ...(base.matches || {}) },
+    sfLosers: { ...(base.sfLosers || {}) },
+    quiz: [...(base.quiz || [])],
+  };
+
+  if (liveResults?.groups) {
+    for (const g of GROUP_KEYS) {
+      if (liveResults.groups[g]?.first) merged.groups[g].first = liveResults.groups[g].first;
+      if (liveResults.groups[g]?.second) merged.groups[g].second = liveResults.groups[g].second;
+    }
+  }
+  if (Array.isArray(liveResults?.thirds)) {
+    merged.thirds = merged.thirds.map((cur, i) => liveResults.thirds[i] || cur);
+  }
+  if (liveResults?.matches) {
+    for (const [m, winner] of Object.entries(liveResults.matches)) {
+      if (winner) merged.matches[m] = winner;
+    }
+  }
+  if (liveResults?.sfLosers) {
+    for (const m of ["101", "102"]) {
+      if (liveResults.sfLosers[m]) merged.sfLosers[m] = liveResults.sfLosers[m];
+    }
+  }
+  if (liveResults?.bronse) merged.bronse = liveResults.bronse;
+  if (liveResults?.finale) merged.finale = liveResults.finale;
+  return merged;
+}
+
+function liveResultsSignature(fasit) {
+  const f = { ...emptyFasit(), ...(fasit || {}) };
+  const matches = {};
+  for (const key of Object.keys(f.matches || {}).sort((a, b) => Number(a) - Number(b))) {
+    matches[key] = f.matches[key] || "";
+  }
+  return JSON.stringify({
+    groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, {
+      first: f.groups?.[g]?.first || "",
+      second: f.groups?.[g]?.second || "",
+    }])),
+    thirds: (f.thirds || []).map((v) => v || ""),
+    matches,
+    sfLosers: {
+      101: f.sfLosers?.[101] || "",
+      102: f.sfLosers?.[102] || "",
+    },
+    bronse: f.bronse || "",
+    finale: f.finale || "",
+  });
+}
+
+function recalculateParticipantScores(participants, fasit) {
+  return participants.map((p) => {
+    if (!p.picks) return p;
+    const s = computeScores(p.picks, fasit);
+    return {
+      ...p,
+      scores: {
+        gruppe: s.gruppe, r16: s.r16, r8: s.r8,
+        kvart: s.kvart, semi: s.semi, bronse_finale: s.bronse_finale,
+      },
+      bonus: s.bonus,
+    };
+  });
 }
 
 function useIsMobile(bp = 640) {
@@ -1315,7 +1386,7 @@ const TEAM_NAME_MAP = {
   "paraguay": "Paraguay", "australia": "Australia",
   "turkey": "Tyrkia", "turkiye": "Tyrkia",
   "germany": "Tyskland", "deutschland": "Tyskland",
-  "curacao": "Curaçao", "netherlands": "Nederland", "holland": "Nederland",
+  "curacao": "Curacao", "curaçao": "Curacao", "netherlands": "Nederland", "holland": "Nederland",
   "japan": "Japan", "sweden": "Sverige", "tunisia": "Tunisia",
   "belgium": "Belgia", "egypt": "Egypt", "iran": "Iran",
   "new zealand": "New Zealand", "spain": "Spania",
@@ -1369,9 +1440,17 @@ function toNorwegian(name) {
   return TEAM_NAME_MAP[cleanName.toLowerCase()] || canonicalFlagName(cleanName);
 }
 
-async function fetchResultsFromAPI() {
+function firstNumber(...values) {
+  for (const value of values) {
+    const n = parseInt(value, 10);
+    if (!isNaN(n)) return n;
+  }
+  return NaN;
+}
+
+async function fetchResultsFromAPI({ refresh = true } = {}) {
   const BASE = "/.netlify/functions/wc?endpoint=";
-  const liveEndpoint = (name) => `${BASE}${name}&refresh=1`;
+  const liveEndpoint = (name) => `${BASE}${name}${refresh ? "&refresh=1" : ""}`;
 
   // Admin refresh deliberately bypasses the shared cache; the public homepage
   // uses the cached response for speed and resilience.
@@ -1416,15 +1495,22 @@ async function fetchResultsFromAPI() {
   if (gamesRes?.ok) {
     const gamesData = await gamesRes.json();
     for (const g of (gamesData?.games || [])) {
-      if (g.finished !== "TRUE") continue;
-      const hs = parseInt(g.home_score);
-      const as_ = parseInt(g.away_score);
-      if (isNaN(hs) || isNaN(as_) || hs === as_) continue;
+      if (String(g.finished || "").toUpperCase() !== "TRUE") continue;
+      const hs = firstNumber(g.home_score);
+      const as_ = firstNumber(g.away_score);
+      if (isNaN(hs) || isNaN(as_)) continue;
+      let homeWon = hs > as_;
+      if (hs === as_) {
+        const hp = firstNumber(g.home_penalty_score, g.home_penalties, g.home_penalty, g.penalty_home_score);
+        const ap = firstNumber(g.away_penalty_score, g.away_penalties, g.away_penalty, g.penalty_away_score);
+        if (isNaN(hp) || isNaN(ap) || hp === ap) continue;
+        homeWon = hp > ap;
+      }
 
       const home = toNorwegian(g.home_team_name_en || "");
       const away = toNorwegian(g.away_team_name_en || "");
-      const winner = hs > as_ ? home : away;
-      const loser = hs > as_ ? away : home;
+      const winner = homeWon ? home : away;
+      const loser = homeWon ? away : home;
       const mn = parseInt(g.id);
       if (!mn) continue;
       if (mn >= 73 && mn <= 102) {
@@ -1470,6 +1556,20 @@ export default function App() {
   const saveQueueRef = useRef(Promise.resolve());
   const saveVersionRef = useRef(0);
   const [saveStatus, setSaveStatus] = useState({ state: "idle", message: "" });
+  const participantsRef = useRef(participants);
+  const fasitRef = useRef(fasit);
+
+  useEffect(() => { participantsRef.current = participants; }, [participants]);
+  useEffect(() => { fasitRef.current = fasit; }, [fasit]);
+
+  const applyLiveResults = useCallback((liveResults) => {
+    const currentFasit = fasitRef.current;
+    const merged = mergeLiveResults(currentFasit, liveResults);
+    if (liveResultsSignature(merged) === liveResultsSignature(currentFasit)) return false;
+    setFasit(merged);
+    setParticipants(recalculateParticipantScores(participantsRef.current, merged));
+    return true;
+  }, []);
 
   // Mobile browsers reveal the document behind the app while rubber-banding at
   // the bottom. Keep that surface in sync with the selected site theme.
@@ -1740,7 +1840,7 @@ export default function App() {
       {mode === "deltakere" && (
         <Deltakere participants={participants} setParticipants={setParticipants} fasit={fasit} saveStatus={saveStatus} />
       )}
-      {mode === "fasit" && <Fasit fasit={fasit} setFasit={setFasit} />}
+      {mode === "fasit" && <Fasit fasit={fasit} setFasit={setFasit} applyLiveResults={applyLiveResults} />}
       {mode === "present" && (isAdmin || settings.ceremonyUnlocked
         ? <Present
             participants={participants}
@@ -1844,18 +1944,7 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
   };
 
   const calcAll = () => {
-    setParticipants(participants.map((p) => {
-      if (!p.picks) return p;
-      const s = computeScores(p.picks, fasit);
-      return {
-        ...p,
-        scores: {
-          gruppe: s.gruppe, r16: s.r16, r8: s.r8,
-          kvart: s.kvart, semi: s.semi, bronse_finale: s.bronse_finale,
-        },
-        bonus: s.bonus,
-      };
-    }));
+    setParticipants(recalculateParticipantScores(participants, fasit));
     setImportMsg("Poeng beregnet fra resultat ✓");
   };
 
@@ -3708,7 +3797,7 @@ function FasitView({ fasit, showBonus, theme }) {
 // ─────────────────────────────────────────────
 // FASIT — faktiske resultater
 // ─────────────────────────────────────────────
-function Fasit({ fasit, setFasit }) {
+function Fasit({ fasit, setFasit, applyLiveResults }) {
   const isMobile = useIsMobile();
   const secStyle = isMobile ? { ...S.fasitSection, padding: 13 } : S.fasitSection;
   const [aiState, setAiState] = useState(""); // "" | "loading" | "ok" | "error"
@@ -3731,30 +3820,11 @@ function Fasit({ fasit, setFasit }) {
     setAiState("loading");
     setAiMsg("Henter VM-resultater fra live-API …");
     try {
-      let res;
-      res = await fetchResultsFromAPI();
-      setAiMsg("Hentet fra live-API ✓ Midlertidig stilling er oppdatert.");
-      const merged = { ...fasit };
-      if (res.groups) {
-        for (const g of GROUP_KEYS) {
-          if (res.groups[g]?.first) merged.groups[g].first = res.groups[g].first;
-          if (res.groups[g]?.second) merged.groups[g].second = res.groups[g].second;
-        }
-      }
-      if (Array.isArray(res.thirds)) {
-        merged.thirds = merged.thirds.map((cur, i) => res.thirds[i] || cur);
-      }
-      if (res.matches) {
-        for (const [m, v] of Object.entries(res.matches)) {
-          if (v) merged.matches = { ...merged.matches, [m]: v };
-        }
-      }
-      if (res.sfLosers) {
-        for (const m of ["101", "102"]) if (res.sfLosers[m]) merged.sfLosers[m] = res.sfLosers[m];
-      }
-      if (res.bronse) merged.bronse = res.bronse;
-      if (res.finale) merged.finale = res.finale;
-      setFasit(merged);
+      const res = await fetchResultsFromAPI();
+      const changed = applyLiveResults(res);
+      setAiMsg(changed
+        ? "Hentet fra live-API ✓ Resultater og poeng er oppdatert."
+        : "Hentet fra live-API ✓ Ingen nye resultater.");
       setAiState("ok");
     } catch (e) {
       console.error(e);
@@ -3783,7 +3853,7 @@ function Fasit({ fasit, setFasit }) {
         <div style={S.importDesc}>
           Henter live gruppe-standings, beste treere og kampresultater direkte fra <b>worldcup26.ir</b> (gratis, ingen nøkkel).
           Viser <b>midlertidig stilling</b> selv om gruppen ikke er ferdigspilt.
-          Trykk på nytt etter hver kampdag for å oppdatere. Quiz-resultat fylles inn manuelt.
+          Serveren sjekker i bakgrunnen og lagrer først når en ny ferdigspilt kamp dukker opp. Quiz-resultat fylles inn manuelt.
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={runAI} disabled={aiState === "loading"} style={S.calcBtn}>
@@ -3907,7 +3977,7 @@ function Fasit({ fasit, setFasit }) {
       </div>
 
       <div style={{ ...S.importDesc, textAlign: "center", padding: "8px 0 24px" }}>
-        Når resultatet er oppdatert: gå til <b>Deltakere</b> og trykk «Beregn poeng fra resultat».
+        Live-oppdateringer beregner poeng automatisk. Etter manuelle endringer kan du fortsatt gå til <b>Deltakere</b> og trykke «Beregn poeng fra resultat».
       </div>
     </div>
   );

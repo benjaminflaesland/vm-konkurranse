@@ -14,3 +14,7 @@
 
 [functions."data"]
   timeout = 15
+
+[functions."update-results"]
+  schedule = "*/15 * * * *"
+  timeout = 30
