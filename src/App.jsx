@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import "flag-icons/css/flag-icons.min.css";
 import vmTrophyMark from "./assets/vm-trophy-mark-26-header.png";
 import norseKnitBand from "./assets/norse-knit-band.png";
 import norseKnitBandLight from "./assets/norse-knit-band-light.png";
@@ -111,13 +112,13 @@ const MATCHUP_CELLS = Object.fromEntries(
 // Each round is the list of match numbers shown in that column, outermost first.
 const BRACKET_TOPOLOGY = {
   left: {
-    r32: [74, 77, 73, 75, 76, 78, 79, 80],
+    r32: [74, 77, 73, 75, 87, 84, 81, 82],
     r16: [89, 90, 91, 92],
     kvart: [97, 98],
     semi: [101],
   },
   right: {
-    r32: [83, 84, 81, 82, 86, 88, 85, 87],
+    r32: [76, 78, 79, 80, 86, 88, 85, 83],
     r16: [93, 94, 95, 96],
     kvart: [99, 100],
     semi: [102],
@@ -127,8 +128,8 @@ const BRACKET_TOPOLOGY = {
 // Which two matches feed each later match (winner of A v winner of B), from the
 // competition template's "Oppsett" notes.
 const MATCH_FEEDERS = {
-  89: [74, 77], 90: [73, 75], 91: [76, 78], 92: [79, 80],
-  93: [83, 84], 94: [81, 82], 95: [86, 88], 96: [85, 87],
+  89: [74, 77], 90: [73, 75], 91: [87, 84], 92: [81, 82],
+  93: [76, 78], 94: [79, 80], 95: [86, 88], 96: [85, 83],
   97: [89, 90], 98: [91, 92], 99: [93, 94], 100: [95, 96],
   101: [97, 98], 102: [99, 100], 104: [101, 102],
 };
@@ -192,6 +193,33 @@ const POINTS = {
   group: 2, third: 2, r16: 3, r8: 3, kvart: 4, semi: 5, bronse: 5, finale: 10, quiz: 1,
   koBonus: 1, koBonusSemi: 2, // rett lag i runden, men feil bracket-plass
 };
+const BRACKET_HIT_COLOR = "#16a34a";
+const BRACKET_BONUS_COLOR = "#E0A106";
+
+function bracketPointColor(status) {
+  return status === "bonus" ? BRACKET_BONUS_COLOR : BRACKET_HIT_COLOR;
+}
+
+function bracketPointBg(status) {
+  return status === "bonus" ? "rgba(224,161,6,0.15)" : "rgba(34,197,94,0.13)";
+}
+
+function BracketPointBadge({ result, compact = false }) {
+  if (!result?.points) return null;
+  return (
+    <span style={{
+      fontSize: compact ? 7.5 : 9,
+      fontWeight: 900,
+      color: bracketPointColor(result.status),
+      flexShrink: 0,
+      opacity: 0.9,
+      lineHeight: 1,
+      whiteSpace: "nowrap",
+    }}>
+      +{result.points}
+    </span>
+  );
+}
 
 // FotMob-inspirert: mettede farger som popper mot helsvart bakgrunn
 const PALETTE = [
@@ -393,6 +421,66 @@ function classifyRound(preds, actuals) {
   return status;
 }
 
+function pointResult(status, pts, bonus) {
+  const points = status === "hit" ? pts : status === "bonus" ? bonus : 0;
+  return points > 0 ? { status, points } : null;
+}
+
+function makeBracketPointGetter(picks, fasit) {
+  if (!picks || !fasit) return null;
+  const byMatch = new Map();
+  const add = (matchId, team, status, pts, bonus, role = "winner") => {
+    const result = pointResult(status, pts, bonus);
+    if (!team || !result) return;
+    const key = String(matchId);
+    if (!byMatch.has(key)) byMatch.set(key, []);
+    byMatch.get(key).push({ team: canonicalTeam(team), role, ...result });
+  };
+
+  const addRound = (ids, pts, bonus) => {
+    const preds = ids.map((id) => picks.matches?.[id]);
+    const actuals = ids.map((id) => fasit.matches?.[id]);
+    classifyRound(preds, actuals).forEach((status, i) => {
+      add(ids[i], preds[i], status, pts, bonus);
+    });
+  };
+
+  addRound(Object.keys(CELLS.r16), POINTS.r16, POINTS.koBonus);
+  addRound(Object.keys(CELLS.r8), POINTS.r8, POINTS.koBonus);
+  addRound(Object.keys(CELLS.kvart), POINTS.kvart, POINTS.koBonus);
+
+  const semiIds = ["101", "102"];
+  const semiWinnerStatus = classifyRound(
+    semiIds.map((id) => picks.matches?.[id]),
+    semiIds.map((id) => fasit.matches?.[id])
+  );
+  semiWinnerStatus.forEach((status, i) => {
+    add(semiIds[i], picks.matches?.[semiIds[i]], status, POINTS.semi, POINTS.koBonusSemi, "winner");
+  });
+
+  const semiLoserStatus = classifyRound(
+    semiIds.map((id) => picks.sfLosers?.[id]),
+    semiIds.map((id) => fasit.sfLosers?.[id])
+  );
+  semiLoserStatus.forEach((status, i) => {
+    add(semiIds[i], picks.sfLosers?.[semiIds[i]], status, POINTS.semi, POINTS.koBonusSemi, "loser");
+  });
+
+  if (fasit.bronse && teamMatch(picks.bronse, fasit.bronse)) {
+    add("bronse", picks.bronse, "hit", POINTS.bronse, 0);
+  }
+  if (fasit.finale && teamMatch(picks.finale, fasit.finale)) {
+    add("finale", picks.finale, "hit", POINTS.finale, 0);
+  }
+
+  return (matchId, team, role = null) => {
+    if (!team) return null;
+    return (byMatch.get(String(matchId)) || []).find((entry) =>
+      (!role || entry.role === role) && teamMatch(team, entry.team)
+    ) || null;
+  };
+}
+
 function emptyFasit() {
   return {
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, { first: "", second: "" }])),
@@ -462,6 +550,11 @@ const FLAG_NAME_ALIASES = {
   ivorycoast: "Elfenbenskysten",
   capeverde: "Kapp Verde",
   saudiarabia: "Saudi Arabia",
+  congodr: "Kongo",
+  drcongo: "Kongo",
+  democraticrepublicofthecongo: "Kongo",
+  democraticrepublicofcongo: "Kongo",
+  rdcongo: "Kongo",
 };
 
 const canonicalFlagName = (name) => {
@@ -477,35 +570,28 @@ const canonicalFlagName = (name) => {
 
 // A few flag icons need self-contained image data so they paint consistently
 // at the small size used in prediction chips.
-const RASTER_FLAG_CODES = new Set(["ch", "gb-eng", "ec", "ba"]);
-const RASTER_FLAG_FILES = { "gb-eng": "gb-eng-flag.png" };
-const RASTER_FLAG_DATA = {
-  "gb-eng": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 600'%3E%3Crect width='900' height='600' fill='%23fff'/%3E%3Crect y='180' width='900' height='240' fill='%23cf142b'/%3E%3Crect x='300' width='300' height='600' fill='%23cf142b'/%3E%3C/svg%3E",
-  ch: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAABmJLR0QA/wD/AP+gvaeTAAAAh0lEQVRoge3Y0QkDIRBAwRjSf8t3LWyIuUF4U4D62J/Fdb3O9tYP+FUBWgFaAVoBWgHaZ/N512C3WmvjhcdPoACtAK0ArQCtAK0AbY1+5iY75j8M9tbjJ1CAVoBWgFaAVoA224Xm+pn7VgFaAVoBWgFaAVoB2u5t9HHHT6AArQCtAK0ArQDtBtxSCnv9YOjJAAAAAElFTkSuQmCC",
-  ec: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAAABmJLR0QA/wD/AP+gvaeTAAAAr0lEQVR4nO3SMRHDMAAEwSiuzCFl8BikeRmCGbgIgsyVUrGL4Ofmx3PtL/57zx6wOoGCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUxnacszcszYOCQEGgIFAQKAgUBAoCBYGCQEGgIFAQKAgUBArj/nxnb1iaBwWBgkBBoCBQECgIFAQKAgWBgkBBoCBQECgIFH63GASAs1peTwAAAABJRU5ErkJggg==",
-  ba: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAAABmJLR0QA/wD/AP+gvaeTAAADoUlEQVR4nO2bX0hTURjAv7vr1LmibTawcohNN7WMzCmFSyE0iBIp8CEoCuolKuotDQP7RxRE9SBFf8SHKEgwrEiSJFNHaP5pUeoEM//ELFPUzaGbbj1IF9Ntduc9956zu9/T2WF33+XHx3c+Dvso0JYBSs4V1F47WI00BFJoUO1FGsBk0U67pLmpFqRR0IFcEBDuiA9BANDer4ew6GydmYdY3CLhIcaRA/qxtmMlpRUW+UegwnmIyCHIBUVG0Hcv5URG0ACQlGyo6r2JOiK3IBe0KkoqiwxjPrYNGIqfFqAOyiHIa5BjenZr8tokrRIAJu3O0xcbX7XEElSz+SjSVW++9Q5MNJt/nSpt6BuyAVHnGh+C3G6PuWu0qdU6PulkNklxxNMx7xUiHAkpCEhwJLAgwN4RH42if/QbFeGa88/7yvDsIcOW/wpKdPGKtupCuUwKkNnVmZnkyBD2fZYicAYV7tHKZdL5dXKK4crLw8K+z1IEFmQdcTBru8N1tTILtz5b4CL9pWcsJUGZkqCyTbmOF7/73D2KW82mUN8o/g/KNRH2KZdr1s3s4HMPKfwxDwDTM3Nut2fhDj55hIUgr2DiCF9BgIcjrAUBBo6E76T9ELdhdW1F/tmiJ+2eOpDIBXkHrAXdu5yTZ9TEqKPSM3a9Gy0X5B2wFpSqj2bWNipDkB4Sa0E17/uZ9ev6/uvVu/l3hHWRfmsacrrmxidnbpWbHz7rBCFqNhadNFv47LOxziBf8JlHRAoCHh2RKgj4ckSwIJqmpIpsJ524LdYE4Fn+gYAQ+Mo1YGiaqnm0L8+oASjosexPtBkA3Ms/xh6s+yA/7DSszzNq5tc6fdqDliJEgUgVtOj+6HEjqv9EkFqDBoft6ZvUungFALyo+37jfkdTN5KaTWSjOA9FwY60GAD40DHs+ZtPnPeQpGbQPINW+6DVvnCH87OfbEFe4dZREAoCTh0FpyDgzhGpx7x/JBLqzNEt2fl36icqV3hXS2on7Z+ThzbfLjECAEBca4syXZIb8E8FZwblZmmY9bq47SvpIYNT0KfO38y6/evISu5qg7NIN5t/qlUytUpW3/zjxIUG25Qr4JpNcCcdAAH02cGZQb4III/EJQjYOxKdIGDpSIyCgM38WnAe8/5hNb8mOkFs59dEJ4jt/JroahDb+TXRCQKW82tiFMRqfk2Mgnzh1VFI0D8sdRQStJhFjkKCvLDQUUiQdxhHIUE+MVm0APAH8UK9x4zw+MUAAAAASUVORK5CYII=",
-};
 
 function Flag({ name, code, size = 18 }) {
   const countryName = canonicalFlagName(name);
   const countryCode = FLAG_CODES[countryName] || code?.toLowerCase();
-  const fallback = countryCode ? countryCode.toUpperCase() : flagOf(countryName) || "?";
-  const flagExtension = RASTER_FLAG_CODES.has(countryCode) ? "png" : "svg";
-  const flagFile = RASTER_FLAG_DATA[countryCode] || `/flags/${RASTER_FLAG_FILES[countryCode] || `${countryCode}.${flagExtension}`}`;
+  const h = Math.round(size * 0.75);
+  const r = Math.max(1, Math.round(size / 10));
+  if (!countryCode) {
+    return (
+      <span role="img" aria-label={countryName ? `${countryName} flagg` : "Flagg"} style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: size, height: h, verticalAlign: "middle", borderRadius: r,
+        background: "var(--bg2)", color: "var(--text3)", fontSize: Math.max(7, Math.round(size * 0.42)), fontWeight: 800,
+      }}>{flagOf(countryName) || "?"}</span>
+    );
+  }
   return (
-    <span role="img" aria-label={countryName ? `${countryName} flagg` : "Flagg"} style={{
-      display: "inline-grid", placeItems: "center", width: size, height: Math.round(size * 0.72),
-      verticalAlign: "middle", lineHeight: 1, overflow: "hidden", borderRadius: Math.max(1, Math.round(size / 10)),
-      boxSizing: "border-box", border: "0.5px solid color-mix(in srgb, var(--text1) 16%, transparent)",
-      background: "var(--bg2)", color: "var(--text3)", fontSize: Math.max(7, Math.round(size * 0.42)), fontWeight: 800,
-    }}>
-      <span aria-hidden="true" style={{ gridArea: "1 / 1", position: "relative", zIndex: 0, letterSpacing: 0.2 }}>{fallback}</span>
-      {countryCode && <img src={flagFile} alt="" loading="eager" decoding="async" onError={(event) => {
-        event.currentTarget.style.display = "none";
-      }} style={{
-        gridArea: "1 / 1", width: "100%", height: "100%", objectFit: "contain", position: "relative", zIndex: 1,
-      }} />}
-    </span>
+    <span
+      role="img"
+      aria-label={countryName ? `${countryName} flagg` : "Flagg"}
+      className={`fi fi-${countryCode}`}
+      style={{ display: "inline-block", width: size, height: h, backgroundSize: "cover", backgroundPosition: "center", verticalAlign: "middle", borderRadius: r, flexShrink: 0 }}
+    />
   );
 }
 
@@ -626,39 +712,46 @@ function LockIcon({ size = 16 }) {
 // FotMob-style mirrored horizontal bracket (desktop / wide screens). Two halves of
 // the draw converge on a center column holding the final, the bronze match and the
 // champion. Connectors are rounded SVG paths drawn behind the cards.
-function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames = false }) {
+function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames = false, flagOnly = false, getFasitWinner = null, getFasitFinale = null, getFasitBronse = null, getPointResult = null }) {
   // 1,204px total: fits the standard 1,280px content area without forcing a
   // horizontal scroll, while preserving enough room for full team names.
-  const CW = 116, ROWH = 33, CH = 2 * ROWH + 1, CONN = 20, CS = CW + CONN, H = 600;
+  // flagOnly mode: 508px total, fits 640px+ screens with just flags (no text).
+  const CW = flagOnly ? 44 : 116, ROWH = flagOnly ? 26 : 33, CH = 2 * ROWH + 1, CONN = flagOnly ? 14 : 20, CS = CW + CONN, H = flagOnly ? 500 : 600;
   const centerX = 4 * CS;
   const totalW = 8 * CS + CW;
 
   const leftCols = [
-    { x: 0,        label: "16-DEL", ids: BRACKET_TOPOLOGY.left.r32 },
-    { x: CS,       label: "8-DEL",  ids: BRACKET_TOPOLOGY.left.r16 },
-    { x: 2 * CS,   label: "KVART",  ids: BRACKET_TOPOLOGY.left.kvart },
-    { x: 3 * CS,   label: "SEMI",   ids: BRACKET_TOPOLOGY.left.semi },
+    { x: 0,        label: "16-DEL", ids: BRACKET_TOPOLOGY.left.r32,   pts: POINTS.r16 },
+    { x: CS,       label: "8-DEL",  ids: BRACKET_TOPOLOGY.left.r16,   pts: POINTS.r8 },
+    { x: 2 * CS,   label: "KVART",  ids: BRACKET_TOPOLOGY.left.kvart, pts: POINTS.kvart },
+    { x: 3 * CS,   label: "SEMI",   ids: BRACKET_TOPOLOGY.left.semi,  pts: POINTS.semi },
   ];
   const rightCols = [
-    { x: 5 * CS,   label: "SEMI",   ids: BRACKET_TOPOLOGY.right.semi },
-    { x: 6 * CS,   label: "KVART",  ids: BRACKET_TOPOLOGY.right.kvart },
-    { x: 7 * CS,   label: "8-DEL",  ids: BRACKET_TOPOLOGY.right.r16 },
-    { x: 8 * CS,   label: "16-DEL", ids: BRACKET_TOPOLOGY.right.r32 },
+    { x: 5 * CS,   label: "SEMI",   ids: BRACKET_TOPOLOGY.right.semi,  pts: POINTS.semi },
+    { x: 6 * CS,   label: "KVART",  ids: BRACKET_TOPOLOGY.right.kvart, pts: POINTS.kvart },
+    { x: 7 * CS,   label: "8-DEL",  ids: BRACKET_TOPOLOGY.right.r16,   pts: POINTS.r8 },
+    { x: 8 * CS,   label: "16-DEL", ids: BRACKET_TOPOLOGY.right.r32,   pts: POINTS.r16 },
   ];
   const cy = (n, i) => H * (i + 0.5) / n;
+  const exactPoint = (name, actual, pts) => name && actual && teamMatch(name, actual) ? { status: "hit", points: pts } : null;
+  const rowPoint = (id, name, pts, role = null) =>
+    getPointResult ? getPointResult(id, name, role) : exactPoint(name, getFasitWinner?.(id), pts);
+  const specialPoint = (id, name, pts, actual) =>
+    getPointResult ? getPointResult(id, name) : exactPoint(name, actual, pts);
 
-  const Row = (name, divider) => (
+  const Row = (name, divider, result = null) => (
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH }}>
-        <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={15} /> : <SkelDot />}</span>
-        {name
-          ? <span title={name} style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{compactNames ? codeOf(name) : name}</span>
-          : <SkelBar w={58} />}
+      <div title={flagOnly ? (name || undefined) : undefined} style={{ display: "flex", alignItems: "center", justifyContent: flagOnly ? "center" : "flex-start", gap: flagOnly ? (result?.points ? 2 : 0) : 8, padding: flagOnly ? "0 2px" : "0 11px", height: ROWH, background: result?.points ? bracketPointBg(result.status) : "transparent" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: flagOnly ? undefined : 20, fontSize: 15 }}>{name ? <Flag name={name} size={flagOnly ? 16 : 15} /> : (flagOnly ? <SkelDot s={8} /> : <SkelDot />)}</span>
+        {!flagOnly && (name
+          ? <span title={name} style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: result?.points ? bracketPointColor(result.status) : "var(--text1)" }}>{compactNames ? codeOf(name) : name}</span>
+          : <SkelBar w={58} />)}
+        <BracketPointBadge result={result} compact={flagOnly} />
       </div>
     </>
   );
-  const Card = (id, x, top) => {
+  const Card = (id, x, top, pts = null) => {
     const [a, b] = getMatch(id);
     return (
       <div style={{
@@ -666,8 +759,8 @@ function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames 
         background: "var(--bg4)", borderRadius: 10, overflow: "hidden",
         border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
       }}>
-        {Row(a, false)}
-        {Row(b, true)}
+        {Row(a, false, rowPoint(id, a, pts))}
+        {Row(b, true, rowPoint(id, b, pts))}
       </div>
     );
   };
@@ -700,6 +793,14 @@ function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames 
   };
   const [finA, finB] = getMatch(104);
   const finale = getFinale(), bronse = getBronse();
+  const fasitFinalWinner = getFasitWinner ? getFasitWinner(104) : null;
+  const fasitFinale = getFasitFinale ? getFasitFinale() : null;
+  const fasitBronse = getFasitBronse ? getFasitBronse() : null;
+  const finaleResult = specialPoint("finale", finale, POINTS.finale, fasitFinale);
+  const bronseResult = specialPoint("bronse", bronse, POINTS.bronse, fasitBronse);
+  const [semiA = null, semiB = null] = MATCH_FEEDERS[104] || [];
+  const finAResult = getPointResult ? rowPoint(semiA, finA, POINTS.semi, "winner") : exactPoint(finA, fasitFinalWinner, POINTS.semi);
+  const finBResult = getPointResult ? rowPoint(semiB, finB, POINTS.semi, "winner") : exactPoint(finB, fasitFinalWinner, POINTS.semi);
   const finalTop = H / 2 - CH / 2;
 
   return (
@@ -715,41 +816,45 @@ function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames 
         </svg>
 
         {leftCols.map((col, k) => col.ids.map((id, i) => (
-          <React.Fragment key={`lc${k}-${i}`}>{Card(id, col.x, cy(col.ids.length, i) - CH / 2)}</React.Fragment>
+          <React.Fragment key={`lc${k}-${i}`}>{Card(id, col.x, cy(col.ids.length, i) - CH / 2, col.pts)}</React.Fragment>
         )))}
         {rightCols.map((col, k) => col.ids.map((id, i) => (
-          <React.Fragment key={`rc${k}-${i}`}>{Card(id, col.x, cy(col.ids.length, i) - CH / 2)}</React.Fragment>
+          <React.Fragment key={`rc${k}-${i}`}>{Card(id, col.x, cy(col.ids.length, i) - CH / 2, col.pts)}</React.Fragment>
         )))}
 
         {/* Champion */}
         <div style={{ position: "absolute", left: centerX, top: 6, width: CW, textAlign: "center" }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase", marginBottom: 4 }}>Mester</div>
-          <TrophyIcon size={34} />
+          <div style={{ fontSize: flagOnly ? 7.5 : 9.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase", marginBottom: flagOnly ? 2 : 4 }}>Mester</div>
+          <TrophyIcon size={flagOnly ? 22 : 34} />
           {finale
-            ? <div title={finale} style={{ marginTop: 4, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--accent)" }}>{compactNames ? codeOf(finale) : finale}</div>
-            : <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}><SkelBar w={64} /></div>}
+            ? flagOnly
+              ? <div title={finale} style={{ marginTop: 3, display: "flex", justifyContent: "center", alignItems: "center", gap: finaleResult ? 2 : 0 }}><Flag name={finale} size={18} /><BracketPointBadge result={finaleResult} compact /></div>
+              : <div title={finale} style={{ marginTop: 4, display: "flex", alignItems: "baseline", justifyContent: "center", gap: 4, minWidth: 0, color: finaleResult ? bracketPointColor(finaleResult.status) : "var(--accent)" }}><span style={{ minWidth: 0, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactNames ? codeOf(finale) : finale}</span><BracketPointBadge result={finaleResult} /></div>
+            : <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}><SkelBar w={flagOnly ? 24 : 64} /></div>}
         </div>
 
         {/* Final */}
         <div style={{ position: "absolute", left: centerX, top: finalTop, width: CW, zIndex: 3 }}>
-          <div style={{ position: "absolute", left: 0, right: 0, top: -22, textAlign: "center" }}><Badge kind="finale">Finale</Badge></div>
+          <div style={{ position: "absolute", left: 0, right: 0, top: flagOnly ? -16 : -22, textAlign: "center" }}><Badge kind="finale">Finale</Badge></div>
           <div style={{ background: "var(--bg4)", borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--accent)", boxShadow: "0 2px 10px rgba(0,0,0,0.12)" }}>
-            {Row(finA, false)}
-            {Row(finB, true)}
+            {Row(finA, false, finAResult)}
+            {Row(finB, true, finBResult)}
           </div>
         </div>
 
         {/* Bronze */}
-        <div style={{ position: "absolute", left: centerX, top: finalTop + CH + 38, width: CW }}>
-          <div style={{ marginBottom: 6, textAlign: "center" }}><Badge kind="bronse">Bronse</Badge></div>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH,
-            background: "var(--bg4)", borderRadius: 10, border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-          }}>
-            <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{bronse ? <Flag name={bronse} size={15} /> : <SkelDot />}</span>
-            {bronse
-              ? <span title={bronse} style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{compactNames ? codeOf(bronse) : bronse}</span>
-              : <SkelBar w={58} />}
+        <div style={{ position: "absolute", left: centerX, top: finalTop + CH + (flagOnly ? 26 : 38), width: CW }}>
+          <div style={{ marginBottom: flagOnly ? 4 : 6, textAlign: "center" }}><Badge kind="bronse">Bronse</Badge></div>
+          <div style={{ background: "var(--bg4)", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+            {flagOnly
+              ? Row(bronse || null, false, bronseResult)
+              : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 11px", height: ROWH }}>
+                  <span style={{ fontSize: 15, width: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{bronse ? <Flag name={bronse} size={15} /> : <SkelDot />}</span>
+                  {bronse
+                    ? <span title={bronse} style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: bronseResult ? bracketPointColor(bronseResult.status) : "var(--text1)" }}>{compactNames ? codeOf(bronse) : bronse}</span>
+                    : <SkelBar w={58} />}
+                  <span style={{ marginLeft: "auto", display: "inline-flex" }}><BracketPointBadge result={bronseResult} /></span>
+                </div>}
           </div>
         </div>
       </div>
@@ -760,7 +865,7 @@ function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames 
 // FotMob-style vertical mirrored bracket (mobile / narrow). The top half flows down
 // and the bottom half flows up, meeting at a center row that holds the bronze match,
 // the final and the champion. Connectors are rounded SVG paths behind the cards.
-function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 330 }) {
+function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 330, getFasitWinner = null, getFasitFinale = null, getFasitBronse = null, getPointResult = null }) {
   const RH = 21, CH = 2 * RH + 1, CV = 30;
   // The 16-dels row holds eight matches. Size the canvas to the available phone
   // width so all eight cards remain reachable without a horizontal crop; only
@@ -771,27 +876,35 @@ function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 33
   const ultraCompact = CW < 58;
   const teamText = (name) => (name ? (useCode ? codeOf(name) : name) : "—");
   const topRounds = [
-    { ids: BRACKET_TOPOLOGY.left.r32 },
-    { ids: BRACKET_TOPOLOGY.left.r16 },
-    { ids: BRACKET_TOPOLOGY.left.kvart },
-    { ids: BRACKET_TOPOLOGY.left.semi },
+    { ids: BRACKET_TOPOLOGY.left.r32,   pts: POINTS.r16 },
+    { ids: BRACKET_TOPOLOGY.left.r16,   pts: POINTS.r8 },
+    { ids: BRACKET_TOPOLOGY.left.kvart, pts: POINTS.kvart },
+    { ids: BRACKET_TOPOLOGY.left.semi,  pts: POINTS.semi },
   ];
   const botRounds = [
-    { ids: BRACKET_TOPOLOGY.right.semi },
-    { ids: BRACKET_TOPOLOGY.right.kvart },
-    { ids: BRACKET_TOPOLOGY.right.r16 },
-    { ids: BRACKET_TOPOLOGY.right.r32 },
+    { ids: BRACKET_TOPOLOGY.right.semi,  pts: POINTS.semi },
+    { ids: BRACKET_TOPOLOGY.right.kvart, pts: POINTS.kvart },
+    { ids: BRACKET_TOPOLOGY.right.r16,   pts: POINTS.r8 },
+    { ids: BRACKET_TOPOLOGY.right.r32,   pts: POINTS.r16 },
   ];
   const HALF_H = topRounds.length * CH + (topRounds.length - 1) * CV;
+  const exactPoint = (name, actual, pts) => name && actual && teamMatch(name, actual) ? { status: "hit", points: pts } : null;
+  const rowPoint = (id, name, pts, role = null) =>
+    getPointResult ? getPointResult(id, name, role) : exactPoint(name, getFasitWinner?.(id), pts);
+  const specialPoint = (id, name, pts, actual) =>
+    getPointResult ? getPointResult(id, name) : exactPoint(name, actual, pts);
 
-  const VRow = (name, divider) => (
+  const VRow = (name, divider, result = null) => (
     <>
       {divider && <div style={{ height: 1, background: "var(--bg2)" }} />}
-      <div style={{ display: "flex", alignItems: "center", gap: ultraCompact ? 0 : 5, padding: ultraCompact ? "0 2px" : "0 7px", height: RH }}>
-        {!ultraCompact && <span style={{ fontSize: 12, width: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{name ? <Flag name={name} size={12} /> : <SkelDot s={9} />}</span>}
-        {name
-          ? <span style={{ flex: 1, minWidth: 0, fontSize: ultraCompact ? 9.5 : useCode ? 11 : 11.5, fontWeight: 700, letterSpacing: ultraCompact ? 0 : useCode ? 0.3 : 0, textAlign: ultraCompact ? "center" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text1)" }}>{teamText(name)}</span>
-          : <span style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}><SkelBar w={ultraCompact ? 24 : 38} /></span>}
+      <div title={ultraCompact ? (name || undefined) : undefined} style={{ display: "flex", alignItems: "center", justifyContent: ultraCompact ? "center" : "flex-start", gap: ultraCompact ? (result?.points ? 2 : 0) : 5, padding: ultraCompact ? "0 1px" : "0 7px", height: RH, background: result?.points ? bracketPointBg(result.status) : "transparent" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: ultraCompact ? undefined : 16, fontSize: 12 }}>
+          {name ? <Flag name={name} size={12} /> : <SkelDot s={ultraCompact ? 7 : 9} />}
+        </span>
+        {!ultraCompact && (name
+          ? <span style={{ flex: 1, minWidth: 0, fontSize: useCode ? 11 : 11.5, fontWeight: 700, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: result?.points ? bracketPointColor(result.status) : "var(--text1)" }}>{teamText(name)}</span>
+          : <span style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}><SkelBar w={38} /></span>)}
+        <BracketPointBadge result={result} compact={ultraCompact} />
       </div>
     </>
   );
@@ -831,8 +944,8 @@ function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 33
             const [a, b] = getMatch(id);
             return (
               <div key={`${ri}-${j}`} style={{ position: "absolute", left: cx - CW / 2, top: y, zIndex: 2, ...cardStyle(false) }}>
-                {VRow(a, false)}
-                {VRow(b, true)}
+                {VRow(a, false, rowPoint(id, a, round.pts))}
+                {VRow(b, true, rowPoint(id, b, round.pts))}
               </div>
             );
           });
@@ -843,6 +956,14 @@ function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 33
 
   const [finA, finB] = getMatch(104);
   const finale = getFinale(), bronse = getBronse();
+  const vFasitFinalWinner = getFasitWinner ? getFasitWinner(104) : null;
+  const vFasitFinale = getFasitFinale ? getFasitFinale() : null;
+  const vFasitBronse = getFasitBronse ? getFasitBronse() : null;
+  const finaleResult = specialPoint("finale", finale, POINTS.finale, vFasitFinale);
+  const bronseResult = specialPoint("bronse", bronse, POINTS.bronse, vFasitBronse);
+  const [semiA = null, semiB = null] = MATCH_FEEDERS[104] || [];
+  const finAResult = getPointResult ? rowPoint(semiA, finA, POINTS.semi, "winner") : exactPoint(finA, vFasitFinalWinner, POINTS.semi);
+  const finBResult = getPointResult ? rowPoint(semiB, finB, POINTS.semi, "winner") : exactPoint(finB, vFasitFinalWinner, POINTS.semi);
 
   return (
     <div style={{ overflowX: "auto" }}>
@@ -852,20 +973,25 @@ function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 33
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: 12, padding: "16px 0" }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ marginBottom: 5 }}><Badge kind="bronse">Bronse</Badge></div>
-            <div style={cardStyle(false)}>{VRow(bronse || null, false)}</div>
+            <div style={cardStyle(false)}>{VRow(bronse || null, false, bronseResult)}</div>
           </div>
           <div style={{ textAlign: "center" }}>
             <div style={{ marginBottom: 5 }}><Badge kind="finale">Finale</Badge></div>
             <div style={cardStyle(true)}>
-              {VRow(finA, false)}
-              {VRow(finB, true)}
+              {VRow(finA, false, finAResult)}
+              {VRow(finB, true, finBResult)}
             </div>
           </div>
           <div style={{ textAlign: "center", width: CW }}>
             <TrophyIcon size={26} />
             <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 1, color: "var(--text3)", textTransform: "uppercase", marginTop: 2 }}>Mester</div>
             {finale
-              ? <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--accent)" }}>{teamText(finale)}</div>
+              ? <div title={finale} style={{ marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: finaleResult ? 2 : 0, minWidth: 0, color: finaleResult ? bracketPointColor(finaleResult.status) : "var(--accent)" }}>
+                  {ultraCompact
+                    ? <Flag name={finale} size={13} />
+                    : <span style={{ minWidth: 0, fontSize: 13, fontWeight: 800, letterSpacing: useCode ? 0.3 : 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamText(finale)}</span>}
+                  <BracketPointBadge result={finaleResult} compact={ultraCompact} />
+                </div>
               : <div style={{ marginTop: 5, display: "flex", justifyContent: "center" }}><SkelBar w={44} /></div>}
           </div>
         </div>
@@ -1197,7 +1323,9 @@ const TEAM_NAME_MAP = {
   "uruguay": "Uruguay", "france": "Frankrike", "senegal": "Senegal",
   "iraq": "Irak", "norway": "Norge", "argentina": "Argentina",
   "algeria": "Algerie", "austria": "Østerrike", "jordan": "Jordan",
-  "portugal": "Portugal", "congo": "Kongo", "dr congo": "Kongo",
+  "portugal": "Portugal", "congo": "Kongo", "dr congo": "Kongo", "congo dr": "Kongo",
+  "democratic republic of the congo": "Kongo", "democratic republic of congo": "Kongo",
+  "democratic republic congo": "Kongo", "drc": "Kongo", "rd congo": "Kongo",
   "uzbekistan": "Uzbekistan", "colombia": "Colombia",
   "england": "England", "croatia": "Kroatia", "ghana": "Ghana",
   "panama": "Panama", "ivory coast": "Elfenbenskysten",
@@ -1868,6 +1996,7 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
 
                               {/* Bracket */}
                               {(() => {
+                                const pointGetter = makeBracketPointGetter(p.picks, fasit);
                                 return (
                                   <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
                                     <div style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>Sluttspill</div>
@@ -1875,11 +2004,19 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
                                       ? <VerticalBracket
                                           getMatch={makeMatchGetter(p.picks).matchTeams}
                                           getBronse={() => p.picks.bronse}
-                                          getFinale={() => p.picks.finale} />
+                                          getFinale={() => p.picks.finale}
+                                          getFasitWinner={makeMatchGetter(fasit).winnerOf}
+                                          getFasitFinale={() => fasit.finale || null}
+                                          getFasitBronse={() => fasit.bronse || null}
+                                          getPointResult={pointGetter} />
                                       : renderBracketHorizontal({
                                           getMatch: makeMatchGetter(p.picks).matchTeams,
                                           getBronse: () => p.picks.bronse,
                                           getFinale: () => p.picks.finale,
+                                          getFasitWinner: makeMatchGetter(fasit).winnerOf,
+                                          getFasitFinale: () => fasit.finale || null,
+                                          getFasitBronse: () => fasit.bronse || null,
+                                          getPointResult: pointGetter,
                                         })}
                                   </div>
                                 );
@@ -1939,7 +2076,7 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
 const STATUS_COLOR = { hit: "var(--accent)", bonus: "#E0A106", miss: "var(--text5)", pending: "var(--text4)" };
 const KNOCKOUT_SECTION_KEYS = new Set(["r16", "r8", "kvart", "semi", "bf"]);
 
-function PredictionBracket({ picks }) {
+function PredictionBracket({ picks, fasit }) {
   const narrow = useIsMobile(1180);
   const hasPredictions = Object.values(picks?.matchups || {}).some((pair) => pair?.some(Boolean))
     || Object.values(picks?.matches || {}).some(Boolean)
@@ -1950,6 +2087,10 @@ function PredictionBracket({ picks }) {
   const getMatch = makeMatchGetter(picks).matchTeams;
   const getBronse = () => picks.bronse || null;
   const getFinale = () => picks.finale || null;
+  const getFasitWinner = fasit ? makeMatchGetter(fasit).winnerOf : null;
+  const getFasitFinale = fasit ? () => fasit.finale || null : null;
+  const getFasitBronse = fasit ? () => fasit.bronse || null : null;
+  const getPointResult = makeBracketPointGetter(picks, fasit);
 
   return (
     <section style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
@@ -1958,8 +2099,8 @@ function PredictionBracket({ picks }) {
         <div style={{ marginTop: 3, color: "var(--text4)", fontSize: 11.5 }}>Tips hele veien til finalen</div>
       </div>
       {narrow
-        ? <VerticalBracket getMatch={getMatch} getBronse={getBronse} getFinale={getFinale} />
-        : renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames: true })}
+        ? <VerticalBracket getMatch={getMatch} getBronse={getBronse} getFinale={getFinale} getFasitWinner={getFasitWinner} getFasitFinale={getFasitFinale} getFasitBronse={getFasitBronse} getPointResult={getPointResult} />
+        : renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames: true, getFasitWinner, getFasitFinale, getFasitBronse, getPointResult })}
     </section>
   );
 }
@@ -2054,7 +2195,7 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
           )}
         </div>
       ))}
-      <PredictionBracket picks={picks} />
+      <PredictionBracket picks={picks} fasit={fasit} />
     </div>
   );
 }
@@ -2581,22 +2722,32 @@ function GeometricRower({ stroke }) {
 
 let hornAudioCtx = null;
 let hornBuffer = null;
+const HORN_DURATION_SECONDS = 2.5;
+const HORN_FADE_SECONDS = 0.35;
 async function playVikingHorn() {
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     hornAudioCtx = hornAudioCtx || new AC();
     const ctx = hornAudioCtx;
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state === "suspended") await ctx.resume();
     if (!hornBuffer) {
       const res = await fetch("/assets/horn.mp3");
       const ab = await res.arrayBuffer();
       hornBuffer = await ctx.decodeAudioData(ab);
     }
+    const t0 = ctx.currentTime;
+    const dur = Math.min(HORN_DURATION_SECONDS, hornBuffer.duration || HORN_DURATION_SECONDS);
+    const fadeStart = Math.max(t0, t0 + dur - HORN_FADE_SECONDS);
     const src = ctx.createBufferSource();
+    const gain = ctx.createGain();
     src.buffer = hornBuffer;
-    src.connect(ctx.destination);
-    src.start();
+    gain.gain.setValueAtTime(1, t0);
+    gain.gain.setValueAtTime(1, fadeStart);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(gain).connect(ctx.destination);
+    src.start(t0);
+    src.stop(t0 + dur);
     return;
   } catch {}
 }
@@ -2609,7 +2760,7 @@ function _playVikingHornSynth() {
     const ctx = hornAudioCtx;
     if (ctx.state === "suspended") ctx.resume();
     const t0 = ctx.currentTime;
-    const dur = 1.7;
+    const dur = HORN_DURATION_SECONDS;
 
     const master = ctx.createGain();
     master.gain.setValueAtTime(0.0001, t0);
@@ -3485,13 +3636,23 @@ function FasitView({ fasit, showBonus, theme }) {
             <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>Ikke avgjort ennå.</span>
           )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+        <div style={isMobile ? { ...S.fasitGrid, gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 6 } : S.fasitGrid}>
           {Array.from({ length: 8 }, (_, i) => {
             const team = thirdPlaced[i];
             return (
-              <div key={i} style={{ minHeight: 42, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, borderRadius: 8, background: "var(--bg4)", border: "1px solid var(--border)" }}>
-                <span style={{ color: "var(--text4)", fontSize: 10, fontWeight: 800, width: 15, flexShrink: 0 }}>{i + 1}</span>
-                {team ? <><Flag name={team} size={19} /><span style={{ color: "var(--text1)", fontSize: 13, fontWeight: 700 }}>{team}</span></> : <span style={{ color: "var(--text4)", fontSize: 12.5, fontWeight: 600 }}>Venter</span>}
+              <div key={i} style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: isMobile ? 9 : 12, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "stretch" }}>
+                  <div style={{ width: isMobile ? 3 : 4, background: team ? "#22C55E" : "var(--border)", flexShrink: 0 }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 5 : 11, padding: isMobile ? "3px 6px" : "11px 14px", flex: 1, minWidth: 0 }}>
+                    <span style={{ width: 16, textAlign: "center", fontSize: isMobile ? 11 : 14, fontWeight: 700, color: "var(--text3)", flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      {team ? <Flag name={team} size={isMobile ? 13 : 18} /> : <SkelDot s={isMobile ? 9 : 12} />}
+                    </span>
+                    {team
+                      ? <span style={{ fontSize: isMobile ? 12 : 15, fontWeight: 700, color: "var(--text1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isMobile ? codeOf(team) : team}</span>
+                      : <SkelBar w={isMobile ? 24 : 52} />}
+                  </div>
+                </div>
               </div>
             );
           })}
