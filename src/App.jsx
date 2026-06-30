@@ -112,14 +112,14 @@ const MATCHUP_CELLS = Object.fromEntries(
 // Each round is the list of match numbers shown in that column, outermost first.
 const BRACKET_TOPOLOGY = {
   left: {
-    r32: [74, 77, 73, 75, 87, 84, 81, 82],
-    r16: [89, 90, 91, 92],
+    r32: [74, 77, 73, 75, 83, 84, 81, 82],
+    r16: [89, 90, 93, 94],
     kvart: [97, 98],
     semi: [101],
   },
   right: {
-    r32: [76, 78, 79, 80, 86, 88, 85, 83],
-    r16: [93, 94, 95, 96],
+    r32: [76, 78, 79, 80, 86, 88, 85, 87],
+    r16: [91, 92, 95, 96],
     kvart: [99, 100],
     semi: [102],
   },
@@ -128,9 +128,9 @@ const BRACKET_TOPOLOGY = {
 // Which two matches feed each later match (winner of A v winner of B), from the
 // competition template's "Oppsett" notes.
 const MATCH_FEEDERS = {
-  89: [74, 77], 90: [73, 75], 91: [87, 84], 92: [81, 82],
-  93: [76, 78], 94: [79, 80], 95: [86, 88], 96: [85, 83],
-  97: [89, 90], 98: [91, 92], 99: [93, 94], 100: [95, 96],
+  89: [74, 77], 90: [73, 75], 91: [76, 78], 92: [79, 80],
+  93: [83, 84], 94: [81, 82], 95: [86, 88], 96: [85, 87],
+  97: [89, 90], 98: [93, 94], 99: [91, 92], 100: [95, 96],
   101: [97, 98], 102: [99, 100], 104: [101, 102],
 };
 
