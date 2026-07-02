@@ -11,11 +11,16 @@ import roadVmMoldova from "./assets/road-vm-moldova.jpg";
 import roadVmNovember from "./assets/road-vm-november.jpg";
 import roadVmMilan from "./assets/road-vm-milan.webp";
 import roadVmArrived from "./assets/road-vm-arrived.webp";
+import vmMatchIraq from "./assets/vm-match-iraq.jpg";
+import vmMatchSenegal from "./assets/vm-match-senegal.jpg";
+import vmMatchFrance from "./assets/vm-match-france.jpg";
+import vmMatchIvoryCoast from "./assets/vm-match-ivory-coast.jpg";
 
 // Every photo used by "Veien til VM". Preloaded as soon as the bundle loads so the
 // cards never flash a blank tile while the image fetches/decodes on refresh.
 const VOYAGE_IMAGES = [
   roadVm1998, roadVmOpening, roadVmItaly, roadVmMoldova, roadVmNovember, roadVmMilan, roadVmArrived,
+  vmMatchIraq, vmMatchSenegal, vmMatchFrance, vmMatchIvoryCoast,
 ];
 if (typeof document !== "undefined") {
   for (const href of VOYAGE_IMAGES) {
@@ -268,6 +273,20 @@ function normalizeSettings(value) {
 }
 
 const DEMO_DATA = import.meta.env.DEV ? (() => {
+  const demoR16Winners = {
+    73: "Canada", 74: "Tyskland", 75: "Marokko", 76: "Brasil",
+    77: "Frankrike", 78: "Norge", 79: "Mexico", 80: "England",
+    81: "USA", 82: "Belgia", 83: "Portugal", 84: "Spania",
+    85: "Paraguay", 86: "Argentina", 87: "Colombia", 88: "Australia",
+  };
+  const demoR8Winners = {
+    89: "Frankrike", 90: "Canada", 91: "Brasil", 92: "Mexico",
+    93: "Spania", 94: "USA", 95: "Argentina", 96: "Paraguay",
+  };
+  const demoKvartWinners = {
+    97: "Frankrike", 98: "Spania", 99: "Brasil", 100: "Paraguay",
+  };
+
   const mkPicks = (mester, bronse, semifinister, kvart, r8, r16, groups, thirds, quiz) => ({
     groups, thirds, bronse, finale: mester,
     matches: {
@@ -294,7 +313,7 @@ const DEMO_DATA = import.meta.env.DEV ? (() => {
 
   const fasit = {
     groups: { A: g("Mexico","USA"), B: g("Canada","Sveits"), C: g("Brasil","Marokko"), D: g("USA","Australia"), E: g("Frankrike","Norge"), F: g("Nederland","Japan"), G: g("Belgia","Iran"), H: g("Spania","Uruguay"), I: g("Frankrike","Norge"), J: g("Argentina","Østerrike"), K: g("Portugal","Colombia"), L: g("England","Kroatia") },
-    matches: { ...Object.fromEntries(Object.keys(CELLS.r16).map((id, i) => [id, ["Brasil","USA","Frankrike","Nederland","Portugal","Spania","England","Argentina","Mexico","Canada","Tyskland","Belgia","Norge","Østerrike","Colombia","Kroatia"][i]])), ...Object.fromEntries(Object.keys(CELLS.r8).map((id, i) => [id, ["Brasil","Frankrike","Portugal","Argentina","USA","Spania","England","Kroatia"][i]])), ...Object.fromEntries(Object.keys(CELLS.kvart).map((id, i) => [id, ["Brasil","Frankrike","Portugal","Argentina"][i]])), 101: "Brasil", 102: "Frankrike" },
+    matches: { ...demoR16Winners, ...demoR8Winners, ...demoKvartWinners, 101: "Frankrike", 102: "Brasil" },
     sfLosers: { 101: "Portugal", 102: "Argentina" },
     bronse: "Argentina", finale: "Brasil",
     quiz: ["3","Ronaldo","8","140","Nei","5","Panama","3","Brasil","Nei"],
@@ -485,6 +504,7 @@ function emptyFasit() {
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, { first: "", second: "" }])),
     thirds: Array(8).fill(""),
     matches: {}, // { "73": "Norge", ... "102": "..." }
+    matchups: {},
     sfLosers: { 101: "", 102: "" },
     bronse: "",
     finale: "",
@@ -499,6 +519,7 @@ function mergeLiveResults(currentFasit, liveResults) {
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, { ...(base.groups?.[g] || {}) }])),
     thirds: [...(base.thirds || [])],
     matches: { ...(base.matches || {}) },
+    matchups: { ...(base.matchups || {}) },
     sfLosers: { ...(base.sfLosers || {}) },
     quiz: [...(base.quiz || [])],
   };
@@ -517,6 +538,11 @@ function mergeLiveResults(currentFasit, liveResults) {
       if (winner) merged.matches[m] = winner;
     }
   }
+  if (liveResults?.matchups) {
+    for (const [m, teams] of Object.entries(liveResults.matchups)) {
+      if (Array.isArray(teams) && teams.some(Boolean)) merged.matchups[m] = teams.slice(0, 2);
+    }
+  }
   if (liveResults?.sfLosers) {
     for (const m of ["101", "102"]) {
       if (liveResults.sfLosers[m]) merged.sfLosers[m] = liveResults.sfLosers[m];
@@ -533,6 +559,11 @@ function liveResultsSignature(fasit) {
   for (const key of Object.keys(f.matches || {}).sort((a, b) => Number(a) - Number(b))) {
     matches[key] = f.matches[key] || "";
   }
+  const matchups = {};
+  for (const key of Object.keys(f.matchups || {}).sort((a, b) => Number(a) - Number(b))) {
+    const pair = Array.isArray(f.matchups[key]) ? f.matchups[key] : [];
+    matchups[key] = [pair[0] || "", pair[1] || ""];
+  }
   return JSON.stringify({
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, {
       first: f.groups?.[g]?.first || "",
@@ -540,6 +571,7 @@ function liveResultsSignature(fasit) {
     }])),
     thirds: (f.thirds || []).map((v) => v || ""),
     matches,
+    matchups,
     sfLosers: {
       101: f.sfLosers?.[101] || "",
       102: f.sfLosers?.[102] || "",
@@ -1101,6 +1133,58 @@ function rankingAt(participants, roundIdx) {
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 }
 
+function movementTotal(p) {
+  return cumulative(p, ROUNDS.length - 1);
+}
+
+function leaderboardSnapshotRows(participants) {
+  return participants
+    .filter((p) => !isExcludedFromCompetition(p))
+    .map((p) => ({ id: p.id, name: p.name, total: movementTotal(p) }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+}
+
+function scoreboardMovementSignature(participants) {
+  return JSON.stringify(
+    participants
+      .filter((p) => !isExcludedFromCompetition(p))
+      .map((p) => ({ id: p.id, total: movementTotal(p) }))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id), "nb-NO"))
+  );
+}
+
+function createLeaderboardSnapshot(participants, sourceLabel = "Siste oppdatering") {
+  const rows = leaderboardSnapshotRows(participants);
+  if (!rows.length) return null;
+  return {
+    sourceLabel,
+    takenAt: Date.now(),
+    rows: rows.map((p, i) => ({ id: p.id, rank: i + 1, total: p.total })),
+  };
+}
+
+function leaderboardMovementFromSnapshot(participants, snapshot) {
+  if (!snapshot?.rows?.length) return new Map();
+  const before = new Map(snapshot.rows.map((p) => [p.id, p]));
+  const movement = new Map();
+  leaderboardSnapshotRows(participants).forEach((p, i) => {
+    const previous = before.get(p.id);
+    if (!previous) return;
+    const currentRank = i + 1;
+    const rankChange = previous.rank - currentRank;
+    const pointsGained = p.total - previous.total;
+    if (rankChange <= 0 && pointsGained <= 0) return;
+    movement.set(p.id, {
+      currentRank,
+      previousRank: previous.rank,
+      rankChange,
+      pointsGained,
+      sourceLabel: snapshot.sourceLabel || "Siste oppdatering",
+    });
+  });
+  return movement;
+}
+
 // ─────────────────────────────────────────────
 // POENGBEREGNING: picks vs fasit
 // ─────────────────────────────────────────────
@@ -1491,10 +1575,18 @@ async function fetchResultsFromAPI({ refresh = true } = {}) {
   result.thirds = thirdPlaced.sort(cmpStandings).slice(0, 8).map((t) => teamMap[t.team_id] || "");
   while (result.thirds.length < 8) result.thirds.push("");
 
-  // Kampresultater (kun hvis games-endepunktet svarte)
+  // Kampoppsett og resultater (kun hvis games-endepunktet svarte)
   if (gamesRes?.ok) {
     const gamesData = await gamesRes.json();
     for (const g of (gamesData?.games || [])) {
+      const mn = parseInt(g.id, 10);
+      if (!mn) continue;
+      const home = toNorwegian(g.home_team_name_en || "");
+      const away = toNorwegian(g.away_team_name_en || "");
+      if (mn >= 73 && mn <= 88 && (home || away)) {
+        result.matchups[String(mn)] = [home, away];
+      }
+
       if (String(g.finished || "").toUpperCase() !== "TRUE") continue;
       const hs = firstNumber(g.home_score);
       const as_ = firstNumber(g.away_score);
@@ -1507,12 +1599,8 @@ async function fetchResultsFromAPI({ refresh = true } = {}) {
         homeWon = hp > ap;
       }
 
-      const home = toNorwegian(g.home_team_name_en || "");
-      const away = toNorwegian(g.away_team_name_en || "");
       const winner = homeWon ? home : away;
       const loser = homeWon ? away : home;
-      const mn = parseInt(g.id);
-      if (!mn) continue;
       if (mn >= 73 && mn <= 102) {
         result.matches[String(mn)] = winner;
         if (mn === 101 || mn === 102) result.sfLosers[String(mn)] = loser;
@@ -1530,6 +1618,7 @@ async function fetchResultsFromAPI({ refresh = true } = {}) {
 export default function App() {
   const [participants, setParticipants] = useState([]);
   const [fasit, setFasit] = useState(emptyFasit());
+  const [movementSnapshot, setMovementSnapshot] = useState(null);
   const [settings, setSettings] = useState(() => normalizeSettings());
   const [adminPreviewCeremony, setAdminPreviewCeremony] = useState(() => normalizeCeremony());
   const [mode, setMode] = useState(() => {
@@ -1562,14 +1651,25 @@ export default function App() {
   useEffect(() => { participantsRef.current = participants; }, [participants]);
   useEffect(() => { fasitRef.current = fasit; }, [fasit]);
 
+  const recordScoreboardMovement = useCallback((beforeParticipants, afterParticipants, sourceLabel) => {
+    const before = beforeParticipants || [];
+    const after = afterParticipants || [];
+    if (scoreboardMovementSignature(before) === scoreboardMovementSignature(after)) return;
+    const snapshot = createLeaderboardSnapshot(before, sourceLabel);
+    if (snapshot) setMovementSnapshot(snapshot);
+  }, []);
+
   const applyLiveResults = useCallback((liveResults) => {
     const currentFasit = fasitRef.current;
     const merged = mergeLiveResults(currentFasit, liveResults);
     if (liveResultsSignature(merged) === liveResultsSignature(currentFasit)) return false;
+    const currentParticipants = participantsRef.current;
+    const nextParticipants = recalculateParticipantScores(currentParticipants, merged);
+    recordScoreboardMovement(currentParticipants, nextParticipants, "Siste liveoppdatering");
     setFasit(merged);
-    setParticipants(recalculateParticipantScores(participantsRef.current, merged));
+    setParticipants(nextParticipants);
     return true;
-  }, []);
+  }, [recordScoreboardMovement]);
 
   // Mobile browsers reveal the document behind the app while rubber-banding at
   // the bottom. Keep that surface in sync with the selected site theme.
@@ -1611,7 +1711,10 @@ export default function App() {
     if (cached?.participants) setLoaded(true);
 
     loadData(adminPassword).then((d) => {
-      if (d?.participants) setParticipants(d.participants);
+      if (d?.participants) {
+        recordScoreboardMovement(participantsRef.current, d.participants, "Siste skyoppdatering");
+        setParticipants(d.participants);
+      }
       if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
       if (d?.settings) setSettings(normalizeSettings(d.settings));
       setLoaded(true);
@@ -1649,6 +1752,7 @@ export default function App() {
     const refresh = async () => {
       const d = await loadData();
       if (!active || !d?.participants) return;
+      recordScoreboardMovement(participantsRef.current, d.participants, "Siste skyoppdatering");
       setParticipants(d.participants);
       if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
       if (d?.settings) setSettings(normalizeSettings(d.settings));
@@ -1834,11 +1938,17 @@ export default function App() {
       </header>
 
       {mode === "hjem" && <Hjem participants={participants} showBonus={bonusPublished} theme={theme} />}
-      {mode === "stilling" && <Stilling participants={participants} fasit={fasit} showBonus={bonusPublished} />}
+      {mode === "stilling" && <Stilling participants={participants} fasit={fasit} showBonus={bonusPublished} movementSnapshot={movementSnapshot} />}
       {mode === "fasit-view" && <FasitView fasit={fasit} showBonus={bonusPublished} theme={theme} />}
       {mode === "vei-vm" && <NorgesVeiTilVM theme={theme} />}
       {mode === "deltakere" && (
-        <Deltakere participants={participants} setParticipants={setParticipants} fasit={fasit} saveStatus={saveStatus} />
+        <Deltakere
+          participants={participants}
+          setParticipants={setParticipants}
+          fasit={fasit}
+          saveStatus={saveStatus}
+          recordScoreboardMovement={recordScoreboardMovement}
+        />
       )}
       {mode === "fasit" && <Fasit fasit={fasit} setFasit={setFasit} applyLiveResults={applyLiveResults} />}
       {mode === "present" && (isAdmin || settings.ceremonyUnlocked
@@ -1861,7 +1971,7 @@ export default function App() {
 // ─────────────────────────────────────────────
 // DELTAKERE — import + manuell redigering
 // ─────────────────────────────────────────────
-function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
+function Deltakere({ participants, setParticipants, fasit, saveStatus, recordScoreboardMovement }) {
   const narrowBracket = useIsMobile(1180);
   const [newName, setNewName] = useState("");
   const [importMsg, setImportMsg] = useState("");
@@ -1944,7 +2054,9 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus }) {
   };
 
   const calcAll = () => {
-    setParticipants(recalculateParticipantScores(participants, fasit));
+    const nextParticipants = recalculateParticipantScores(participants, fasit);
+    recordScoreboardMovement?.(participants, nextParticipants, "Manuell poengberegning");
+    setParticipants(nextParticipants);
     setImportMsg("Poeng beregnet fra resultat ✓");
   };
 
@@ -2291,34 +2403,131 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
 
 function leaderboardGridColumns(isMobile, roundColumnWidth) {
   return isMobile
-    ? "28px 12px minmax(0, 1fr) 44px 14px"
-    : `28px 12px minmax(140px, 1fr) repeat(${ROUNDS.length}, ${roundColumnWidth}px) 44px 14px`;
+    ? "28px 22px minmax(0, 1fr) 44px 14px"
+    : `28px 22px minmax(140px, 1fr) repeat(${ROUNDS.length}, ${roundColumnWidth}px) 44px 14px`;
 }
 
-function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open, onToggle, fasit, showBonus, excluded = false, divider = false }) {
+const LEADERBOARD_RANK_LOOK = {
+  1: { accent: "#D8B15A", bg: "rgba(216,177,90,0.15)", fg: "#16110A", label: "Leder" },
+  2: { accent: "#AEB8C8", bg: "rgba(174,184,200,0.12)", fg: "var(--text1)", label: "Jager" },
+  3: { accent: "#B98256", bg: "rgba(185,130,86,0.12)", fg: "var(--text1)", label: "Podium" },
+};
+
+function leaderboardRankLook(rank) {
+  return LEADERBOARD_RANK_LOOK[rank] || null;
+}
+
+function MovementPill({ movement, compact = false }) {
+  if (!movement) return null;
+  const movedUp = movement.rankChange > 0;
+  const color = movedUp ? "var(--accent)" : "#D8B15A";
+  const arrow = movedUp ? "▲" : "";
+  const rankText = Math.abs(movement.rankChange);
+  const pointText = `${movement.pointsGained > 0 ? "+" : ""}${movement.pointsGained}`;
+  const title = `${movement.sourceLabel || "Siste oppdatering"}: ${pointText} poeng.${
+    movedUp ? ` Opp ${rankText} ${rankText === 1 ? "plass" : "plasser"}.` : ""
+  }`;
+
+  return (
+    <span title={title} style={{
+      display: "inline-flex", alignItems: "center", gap: compact ? 4 : 5, flexShrink: 0,
+      padding: compact ? "2px 5px" : "3px 7px", borderRadius: 999,
+      border: `1px solid color-mix(in srgb, ${color} 44%, transparent)`,
+      background: `color-mix(in srgb, ${color} 11%, transparent)`,
+      color, fontSize: compact ? 10.5 : 11, fontWeight: 900, letterSpacing: 0.2,
+      lineHeight: 1, whiteSpace: "nowrap",
+    }}>
+      {movedUp && <span aria-hidden="true">{arrow}</span>}
+      {movedUp && rankText > 0 && <span>{rankText}</span>}
+      <span>{pointText}{compact ? "" : " p"}</span>
+    </span>
+  );
+}
+
+function LeaderboardEntry({ participant, rank, movement, isMobile, roundColumnWidth, open, onToggle, fasit, showBonus, excluded = false, divider = false }) {
+  const rankLook = !excluded ? leaderboardRankLook(rank) : null;
+  const isChampion = rank === 1 && !excluded;
+  const isMedal = Boolean(rankLook) && !isChampion;
+  const railColor = excluded ? "var(--text5)" : participant.color || rankLook?.accent || "var(--accent)";
+  const rowClass = [
+    "leaderboard-row",
+    open ? "leaderboard-row-open" : "",
+    isChampion ? "leaderboard-row-champion" : "",
+    isMedal ? "leaderboard-row-medal" : "",
+  ].filter(Boolean).join(" ");
+  const rowBackground = excluded
+    ? "color-mix(in srgb, var(--bg2) 66%, transparent)"
+    : open
+      ? `linear-gradient(90deg, color-mix(in srgb, ${railColor} 13%, var(--bg2)), var(--bg2))`
+      : rankLook
+        ? `linear-gradient(90deg, color-mix(in srgb, ${rankLook.accent} ${isChampion ? 13 : 7}%, transparent), transparent 48%), var(--bg3)`
+        : "var(--bg3)";
+  const totalColor = excluded ? "var(--text3)" : isChampion ? rankLook.accent : "var(--accent)";
+  const totalBg = excluded
+    ? "color-mix(in srgb, var(--bg2) 72%, transparent)"
+    : isChampion
+      ? "color-mix(in srgb, #D8B15A 14%, var(--bg2))"
+      : "color-mix(in srgb, var(--accent) 10%, var(--bg2))";
+
   return (
     <div style={{ borderBottom: divider ? "1px solid var(--border)" : "none" }}>
-      <div onClick={onToggle} style={{
-        display: "grid", gridTemplateColumns: leaderboardGridColumns(isMobile, roundColumnWidth), columnGap: 12,
-        alignItems: "center", padding: "16px 20px", cursor: "pointer",
-        background: open ? "var(--bg2)" : excluded ? "color-mix(in srgb, var(--bg2) 64%, transparent)" : "transparent",
-        transition: "background .15s",
+      <div className={rowClass} onClick={onToggle} style={{
+        position: "relative", display: "grid", gridTemplateColumns: leaderboardGridColumns(isMobile, roundColumnWidth), columnGap: isMobile ? 10 : 12,
+        alignItems: "center", padding: isMobile ? "15px 14px 15px 17px" : "16px 20px", cursor: "pointer",
+        background: rowBackground,
+        transition: "background .16s ease, box-shadow .16s ease",
       }}>
-        <span style={{ width: 28, fontWeight: 800, fontSize: 18, color: excluded ? "var(--text4)" : rank <= 3 ? "var(--accent)" : "var(--text3)" }}>
+        <span aria-hidden="true" style={{
+          position: "absolute", left: 0, top: 10, bottom: 10, width: 3, borderRadius: "0 8px 8px 0",
+          background: railColor, opacity: excluded ? 0.32 : 0.88,
+          boxShadow: !excluded && rankLook ? `0 0 18px color-mix(in srgb, ${rankLook.accent} 38%, transparent)` : "none",
+        }} />
+        <span style={{
+          width: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 9, fontWeight: 900, fontSize: 14,
+          color: excluded ? "var(--text4)" : rankLook ? rankLook.fg : "var(--text3)",
+          background: excluded ? "transparent" : rankLook ? rankLook.bg : "transparent",
+          border: rankLook ? `1px solid color-mix(in srgb, ${rankLook.accent} 58%, transparent)` : "1px solid transparent",
+          boxShadow: isChampion ? "inset 0 1px 0 rgba(255,255,255,0.22), 0 0 18px rgba(216,177,90,0.16)" : "none",
+        }}>
           {excluded ? "–" : rank}
         </span>
         {!excluded && rank === 1
-          ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", marginLeft: -2 }}><CrownIcon size={16} /></span>
-          : <span style={{ ...S.dot, background: participant.color, width: 12, height: 12, opacity: excluded ? 0.65 : 1 }} />}
+          ? <span style={{
+              display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, marginLeft: -4,
+              borderRadius: "50%", background: "rgba(216,177,90,0.12)", boxShadow: "0 0 16px rgba(216,177,90,0.18)",
+            }}><CrownIcon size={16} /></span>
+          : <span style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, marginLeft: -3,
+              borderRadius: "50%", border: rankLook ? `1px solid color-mix(in srgb, ${rankLook.accent} 58%, transparent)` : "1px solid transparent",
+              background: rankLook ? `color-mix(in srgb, ${rankLook.accent} 10%, transparent)` : "transparent",
+              opacity: excluded ? 0.65 : 1,
+            }}>
+              <span style={{ width: rankLook ? 8 : 12, height: rankLook ? 8 : 12, borderRadius: "50%", background: participant.color, display: "inline-block" }} />
+            </span>}
         <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700, fontSize: 16, color: excluded ? "var(--text2)" : "var(--text1)" }}>{firstName(participant.name)}</span>
+          {isChampion && !isMobile && (
+            <span style={{
+              flexShrink: 0, padding: "3px 7px", borderRadius: 999,
+              background: "rgba(216,177,90,0.12)", border: "1px solid rgba(216,177,90,0.28)",
+              color: "#D8B15A", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.7,
+            }}>{rankLook.label}</span>
+          )}
+          {!excluded && <MovementPill movement={movement} compact={isMobile} />}
         </span>
         {!isMobile && ROUNDS.map((r) => (
           <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", minWidth: 0 }}>
             <span style={{ color: excluded ? "var(--text3)" : "var(--text1)", fontWeight: 700, fontSize: 13 }}>{participant.scores[r.key] || 0}</span>
           </span>
         ))}
-        <span style={{ fontWeight: 900, fontSize: 20, color: excluded ? "var(--text3)" : "var(--accent)", minWidth: 44, textAlign: "right" }}>
+        <span style={{
+          justifySelf: "end", display: "inline-flex", alignItems: "center", justifyContent: "center",
+          minWidth: isMobile ? 44 : 58, height: isMobile ? 30 : 34, padding: isMobile ? "0 6px" : "0 11px",
+          borderRadius: 10, border: `1px solid color-mix(in srgb, ${totalColor} 34%, transparent)`,
+          background: totalBg, color: totalColor, fontWeight: 950, fontSize: isMobile ? 18 : 20, textAlign: "center",
+          boxShadow: !excluded ? `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 18px color-mix(in srgb, ${totalColor} 10%, transparent)` : "none",
+        }}>
           {participant.total}
         </span>
         <span style={{ color: "var(--text4)", fontSize: 11, width: 14, textAlign: "center",
@@ -2329,7 +2538,7 @@ function LeaderboardEntry({ participant, rank, isMobile, roundColumnWidth, open,
   );
 }
 
-function Stilling({ participants, fasit, showBonus }) {
+function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
   // Show the focused rank/player/total layout before the per-round columns
   // become crowded in a narrowed desktop or tablet window.
   const isMobile = useIsMobile(1100);
@@ -2340,6 +2549,7 @@ function Stilling({ participants, fasit, showBonus }) {
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
   const excluded = participants.filter(isExcludedFromCompetition).map(toTotal)
     .sort((a, b) => a.name.localeCompare(b.name, "nb-NO"));
+  const movementById = leaderboardMovementFromSnapshot(participants, movementSnapshot);
 
   if (participants.length === 0) {
     return (
@@ -2360,11 +2570,16 @@ function Stilling({ participants, fasit, showBonus }) {
           </div>
         )}
       </div>
-      <div style={{ position: "relative", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden" }}>
-        {!isMobile && <div style={{
+      <div className="leaderboard-shell" style={{
+        position: "relative", background: "linear-gradient(180deg, color-mix(in srgb, var(--bg4) 18%, var(--bg3)), var(--bg3))",
+        border: "1px solid color-mix(in srgb, var(--accent) 18%, var(--border))",
+        borderRadius: 18, overflow: "hidden",
+        boxShadow: "0 20px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06)",
+      }}>
+        {!isMobile && <div className="leaderboard-header" style={{
           display: "grid", gridTemplateColumns: leaderboardGridColumns(false, roundColumnWidth), columnGap: 12,
           alignItems: "center", padding: "14px 20px 12px",
-          borderBottom: "1px solid var(--border)", color: "var(--text3)", fontSize: 10.5,
+          borderBottom: "1px solid color-mix(in srgb, var(--accent) 14%, var(--border))", color: "var(--text3)", fontSize: 10.5,
           fontWeight: 800, letterSpacing: 0.7, textTransform: "uppercase",
         }}>
           <span />
@@ -2375,14 +2590,14 @@ function Stilling({ participants, fasit, showBonus }) {
           <span />
         </div>}
         {ranked.map((p, i) => (
-          <LeaderboardEntry key={p.id} participant={p} rank={i + 1} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
+          <LeaderboardEntry key={p.id} participant={p} rank={i + 1} movement={movementById.get(p.id)} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
             open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
             divider={i < ranked.length - 1} />
         ))}
         {excluded.length > 0 && (
           <div style={{ borderTop: ranked.length > 0 ? "1px solid var(--border)" : "none" }}>
             {excluded.map((p, i) => (
-              <LeaderboardEntry key={p.id} participant={p} rank={null} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
+              <LeaderboardEntry key={p.id} participant={p} rank={null} movement={null} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
                 open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
                 excluded divider={i < excluded.length - 1} />
             ))}
@@ -2527,12 +2742,10 @@ let liveGamesRequest = null;
 // local cache takes precedence on subsequent visits.
 const BUILTIN_LIVE_GAMES = [
   { id: "18", home_team_name_en: "Iraq", away_team_name_en: "Norway", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-16T22:00:00.000Z", type: "group" },
-  { id: "41", home_team_name_en: "France", away_team_name_en: "Iraq", finished: "FALSE", kickoffAt: "2026-06-22T21:00:00.000Z", type: "group" },
   { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", home_score: "3", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
-  { id: "43", home_team_name_en: "Argentina", away_team_name_en: "Austria", finished: "FALSE", kickoffAt: "2026-06-22T17:00:00.000Z", type: "group" },
-  { id: "44", home_team_name_en: "Jordan", away_team_name_en: "Algeria", finished: "FALSE", kickoffAt: "2026-06-23T03:00:00.000Z", type: "group" },
-  { id: "45", home_team_name_en: "Portugal", away_team_name_en: "Uzbekistan", finished: "FALSE", kickoffAt: "2026-06-23T17:00:00.000Z", type: "group" },
-  { id: "62", home_team_name_en: "Norway", away_team_name_en: "France", finished: "FALSE", kickoffAt: "2026-06-26T19:00:00.000Z", type: "group" },
+  { id: "62", home_team_name_en: "Norway", away_team_name_en: "France", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-26T19:00:00.000Z", type: "group" },
+  { id: "78", home_team_name_en: "Ivory Coast", away_team_name_en: "Norway", home_score: "1", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-30T16:00:00.000Z", type: "r32" },
+  { id: "91", home_team_name_en: "Brazil", away_team_name_en: "Norway", finished: "FALSE", kickoffAt: "2026-07-05T20:00:00.000Z", type: "r16" },
 ];
 
 function readCachedLiveGames() {
@@ -2653,17 +2866,7 @@ function NorwayNextGame({ theme }) {
 // Sample-kamper i DEV slik at kortet kan forhåndsvises lokalt (Netlify-funksjonen
 // kjører ikke i `npm run dev`). I produksjon brukes ekte data fra proxyen.
 const DEV_SAMPLE_GAMES = import.meta.env.DEV
-  ? [
-      { id: "18", home_team_name_en: "Iraq", away_team_name_en: "Norway", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-16T22:00:00.000Z", type: "group" },
-      { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", home_score: "3", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
-      { id: "62", home_team_name_en: "Norway", away_team_name_en: "France", finished: "FALSE", kickoffAt: "2026-06-26T19:00:00.000Z", type: "group" },
-      { id: "63", home_team_name_en: "France", away_team_name_en: "Iraq", finished: "FALSE", kickoffAt: "2026-06-27T19:00:00.000Z", type: "group" },
-      { id: "64", home_team_name_en: "Argentina", away_team_name_en: "Austria", finished: "FALSE", kickoffAt: "2026-06-27T22:00:00.000Z", type: "group" },
-      { id: "65", home_team_name_en: "Portugal", away_team_name_en: "Uzbekistan", finished: "FALSE", kickoffAt: "2026-06-28T19:00:00.000Z", type: "group" },
-      { id: "66", home_team_name_en: "Jordan", away_team_name_en: "Algeria", finished: "FALSE", kickoffAt: "2026-06-28T22:00:00.000Z", type: "group" },
-      { id: "67", home_team_name_en: "Brazil", away_team_name_en: "Senegal", finished: "FALSE", kickoffAt: "2026-06-29T19:00:00.000Z", type: "group" },
-      { id: "68", home_team_name_en: "Spain", away_team_name_en: "Norway", finished: "FALSE", kickoffAt: "2026-06-30T19:00:00.000Z", type: "group" },
-    ]
+  ? BUILTIN_LIVE_GAMES
   : null;
 
 // Henter kampoppsettet fra wc-proxyen og viser de neste kampene som skal spilles.
@@ -3237,6 +3440,75 @@ const knockoutRound = (id) => {
   return "Sluttspill";
 };
 
+const VM_MATCH_STORIES = {
+  18: {
+    label: "VM-comebacket",
+    title: "Haaland tente returen",
+    body: "Første VM-kamp på 28 år ble jevnere enn 4–1 tilsier. Irak utlignet før pause og presset Norge, men Haaland straffet en keeperfeil, Østigård headet inn treeren og et sent selvmål ga en perfekt start.",
+    visual: "Haaland x2",
+    outcome: "Tre poeng og viktig målforskjell i åpningskampen.",
+    image: vmMatchIraq,
+    focus: "46% 46%",
+    focusMobile: "44% 46%",
+    focusDesktop: "47% 46%",
+  },
+  42: {
+    label: "Nøkkelkampen",
+    title: "Haaland avgjorde kaoskampen",
+    body: "Marcus Pedersen kom tidlig inn fra benken og svarte med sitt første landslagsmål. Etter pause satte Haaland to, men Ismaïla Sarrs dobbel gjorde sluttminuttene ville før Norge rodde av stormen.",
+    visual: "Knockout klar",
+    outcome: "Avansementet var sikret før gruppefinalen mot Frankrike.",
+    image: vmMatchSenegal,
+    focus: "41% 4%",
+    focusMobile: "41% 0%",
+    focusDesktop: "43% 4%",
+    imageHeightMobile: 250,
+  },
+  62: {
+    label: "Gruppefinalen",
+    title: "Dembélé ødela gruppefinalen",
+    body: "Norge hvilte flere profiler og fikk en brutal lærepenge. Ousmane Dembélé avgjorde kampen med et hat trick før halvtimen var spilt, og en reddet Strand Larsen-straffe fjernet siste håp om comeback.",
+    visual: "Varsko",
+    outcome: "Andreplass i gruppa - videre, men med tydelig varsel.",
+    image: vmMatchFrance,
+    focus: "43% 52%",
+    focusMobile: "41% 52%",
+    focusDesktop: "39% 52%",
+    imageHeightMobile: 250,
+    imageHeightDesktop: 292,
+  },
+  78: {
+    label: "Utslagsdramaet",
+    title: "Nusa åpnet, Haaland lukket",
+    body: "Antonio Nusa sendte Norge foran med et soloraid, før Amad Diallo både reddet på streken og utlignet. Fire minutter før slutt kom Bobb og Berg fri på høyresiden, og Haaland dyttet Norge videre.",
+    visual: "Videre!",
+    outcome: "Første norske VM-sluttspillseier. Brasil venter i åttedelsfinalen.",
+    image: vmMatchIvoryCoast,
+    focus: "62% 43%",
+    focusMobile: "63% 43%",
+    focusDesktop: "61% 43%",
+    imageHeightMobile: 244,
+  },
+};
+
+function matchStoryForGame(game, result, opponent) {
+  if (!result) return null;
+  const known = VM_MATCH_STORIES[Number(game.id)];
+  if (known) return known;
+  const won = result === "W";
+  const drawn = result === "D";
+  return {
+    label: game.type === "group" ? "VM-kamp" : knockoutRound(game.id),
+    title: won ? "Norge tok neste steg" : drawn ? "Alt er fortsatt åpent" : "Norge må reise seg igjen",
+    body: won
+      ? `Seieren mot ${opponent} ga Norge mer fart på VM-reisen og flyttet laget videre langs ruten.`
+      : drawn
+        ? `Uavgjort mot ${opponent} holdt spenningen levende og gjorde neste kamp enda viktigere.`
+        : `Tapet mot ${opponent} ble et stopp i marsjen, men ruten videre er ikke ferdig skrevet.`,
+    visual: won ? "Seier" : drawn ? "Uavgjort" : "Tap",
+  };
+}
+
 function gameToVoyageNode(game) {
   const norwayHome = game.home_team_name_en === "Norway";
   const opponent = toNorwegian(norwayHome ? game.away_team_name_en : game.home_team_name_en);
@@ -3261,6 +3533,7 @@ function gameToVoyageNode(game) {
     kickoff: kickoff ? kickoff.toISOString() : null,
     score: hasScore ? `${norwayScore}–${opponentScore}` : null,
     result,
+    story: matchStoryForGame(game, result, opponent),
   };
 }
 
@@ -3560,6 +3833,79 @@ function NorgesVeiTilVM() {
   );
 }
 
+function MatchPicture({ node, isMobile, resColor }) {
+  const opponent = node.opponent || "Motstander";
+  const label = node.story?.visual || node.story?.label || node.round;
+  const image = node.story?.image;
+  const story = node.story || {};
+  const imageHeight = isMobile
+    ? story.imageHeightMobile || 232
+    : story.imageHeightDesktop || 276;
+  const imageFocus = isMobile
+    ? story.focusMobile || story.focus || "center"
+    : story.focusDesktop || story.focus || "center";
+  const imageScale = story.scale || 1;
+  return (
+    <div style={{
+      position: "relative", minHeight: imageHeight, height: "100%", overflow: "hidden",
+      backgroundColor: "#071C42",
+    }}>
+      {image ? (
+        <img
+          src={image}
+          alt=""
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            objectFit: "cover", objectPosition: imageFocus,
+            transform: `scale(${imageScale})`,
+          }}
+        />
+      ) : null}
+      <div aria-hidden="true" style={{
+        position: "absolute", inset: 0,
+        background: `
+          linear-gradient(90deg, rgba(0,0,0,0.72), rgba(0,0,0,0.22) 48%, rgba(0,0,0,0.78)),
+          linear-gradient(0deg, rgba(0,0,0,0.46), transparent 44%),
+          radial-gradient(circle at 18% 22%, color-mix(in srgb, ${resColor} 24%, transparent), transparent 32%)
+        `,
+      }} />
+      <div aria-hidden="true" style={{
+        position: "absolute", inset: 0, opacity: 0.14,
+        backgroundImage: `url(${norseKnitBand})`,
+        backgroundRepeat: "repeat",
+        backgroundSize: "96px 96px",
+        mixBlendMode: "screen",
+      }} />
+
+      <div style={{ position: "relative", zIndex: 1, height: "100%", minHeight: imageHeight, padding: isMobile ? 16 : 20, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <Flag name="Norge" size={isMobile ? 30 : 38} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 10, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase" }}>Norge</div>
+              <div style={{ color: "#FFFFFF", fontSize: isMobile ? 16 : 19, fontWeight: 900, whiteSpace: "nowrap" }}>{node.score}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0, justifyContent: "flex-end" }}>
+            <div style={{ minWidth: 0, textAlign: "right" }}>
+              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 10, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase" }}>{codeOf(opponent)}</div>
+              <div style={{ color: "#FFFFFF", fontSize: isMobile ? 13 : 15, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: isMobile ? 126 : 150 }}>{opponent}</div>
+            </div>
+            <Flag name={opponent} code={node.oppCode} size={isMobile ? 30 : 38} />
+          </div>
+        </div>
+
+        <div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 9px", borderRadius: 8, background: "rgba(0,0,0,0.34)", border: "1px solid rgba(255,255,255,0.13)" }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: resColor, boxShadow: `0 0 0 4px color-mix(in srgb, ${resColor} 18%, transparent)` }} />
+            <span style={{ color: "#FFFFFF", fontSize: 10.5, fontWeight: 900, letterSpacing: 1.1, textTransform: "uppercase" }}>{label}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VoyageCard({ node, active, isMobile, imageOnRight }) {
   const splitDirection = isMobile ? "column" : imageOnRight ? "row-reverse" : "row";
   const base = {
@@ -3613,7 +3959,13 @@ function VoyageCard({ node, active, isMobile, imageOnRight }) {
   const kickoff = node.kickoff ? new Date(node.kickoff) : null;
   const upcomingFixture = !played && !placeholder && Boolean(node.opponent);
   const campaignLabel = placeholder ? "Mulig videre vei" : upcomingFixture ? "Neste kamp" : resLabel;
-  const campaignTitle = placeholder ? "Kun ved avansement" : upcomingFixture ? kickoff ? formatCountdown(kickoff) : "Kampdato kommer" : node.result === "W" ? "3 poeng" : node.result === "D" ? "1 poeng" : "0 poeng";
+  const campaignTitle = placeholder
+    ? "Kun ved avansement"
+    : upcomingFixture
+      ? kickoff ? formatCountdown(kickoff) : "Kampdato kommer"
+      : node.kind === "knockout"
+        ? node.result === "W" ? "Videre" : node.result === "D" ? "Ekstra nerve" : "Stopp"
+        : node.result === "W" ? "3 poeng" : node.result === "D" ? "1 poeng" : "0 poeng";
   const perfectGroupStart = node.kind === "group" && node.result === "W" && node.groupMatchesPlayed === 2 && node.groupPoints === 6;
   const campaignCopy = placeholder
     ? "Motstander og kampdato fastsettes etter gruppespillet."
@@ -3621,8 +3973,59 @@ function VoyageCard({ node, active, isMobile, imageOnRight }) {
       ? kickoff
         ? `${kickoff.toLocaleDateString("nb-NO", { weekday: "long", day: "numeric", month: "long" })} · ${kickoff.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })} norsk tid`
         : "Tidspunktet er ikke fastsatt ennå."
-      : node.result === "W" ? perfectGroupStart ? "Seks poeng av seks — Norge står med full pott etter to kamper." : "En sterk start på VM-reisen." : node.result === "D" ? "Alt er fortsatt åpent i gruppa." : "Norge må slå tilbake i neste kamp.";
+      : node.kind === "knockout"
+        ? node.result === "W" ? "Norge lever videre i sluttspillet." : "VM-reisen stopper her."
+        : node.result === "W" ? perfectGroupStart ? "Seks poeng av seks — Norge står med full pott etter to kamper." : "En sterk start på VM-reisen." : node.result === "D" ? "Alt er fortsatt åpent i gruppa." : "Norge må slå tilbake i neste kamp.";
   const panelColor = placeholder ? "#C7A75D" : upcomingFixture ? "var(--accent)" : resColor;
+
+  if (played) {
+    const story = node.story || matchStoryForGame({ id: node.id, type: node.kind }, node.result, node.opponent);
+    return (
+      <article style={{ ...base, maxWidth: isMobile ? "none" : 960, borderColor: `color-mix(in srgb, ${resColor} 45%, var(--border))` }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "42% 58%", alignItems: "stretch" }}>
+          <MatchPicture node={node} isMobile={isMobile} resColor={resColor} />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 216px", minWidth: 0 }}>
+            <div style={{ padding: isMobile ? "14px 15px 16px" : "19px 22px", minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span style={{ color: "var(--text3)", fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" }}>
+                  {node.round}{node.date && node.date !== "Sluttspill" ? ` · ${node.date}` : ""}
+                </span>
+                <span style={{ color: resColor, fontSize: 11.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.4 }}>{resLabel}</span>
+              </div>
+
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 800, color: "var(--text1)" }}>
+                  <Flag name="Norge" size={19} /> Norge
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 900, color: resColor, minWidth: 46, textAlign: "center", padding: "2px 9px", borderRadius: 8, background: "var(--bg2)" }}>
+                  {node.score}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 800, color: "var(--text1)", minWidth: 0 }}>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.opponent}</span>
+                  <Flag name={node.opponent} code={node.oppCode} size={19} />
+                </span>
+              </div>
+
+              <div style={{ marginTop: 14, color: resColor, fontSize: 10.5, fontWeight: 900, letterSpacing: 1.1, textTransform: "uppercase" }}>{story.label}</div>
+              <h3 style={{ margin: "5px 0 0", color: "var(--text1)", fontSize: isMobile ? 20 : 22, lineHeight: 1.12, fontWeight: 900, letterSpacing: -0.45 }}>{story.title}</h3>
+              <p style={{ margin: "8px 0 0", color: "var(--text2)", fontSize: 13.5, lineHeight: 1.55, fontWeight: 600 }}>{story.body}</p>
+            </div>
+            <aside style={{
+              display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0,
+              padding: isMobile ? "13px 15px 15px" : "19px 20px",
+              borderTop: isMobile ? "1px solid var(--border)" : "none",
+              borderLeft: isMobile ? "none" : "1px solid var(--border)",
+              background: `linear-gradient(135deg, color-mix(in srgb, ${panelColor} 10%, var(--bg3)), var(--bg3))`,
+            }}>
+              <div style={{ color: panelColor, fontSize: 10.5, fontWeight: 900, letterSpacing: 1.1, textTransform: "uppercase" }}>{campaignLabel}</div>
+              <div style={{ marginTop: 5, color: "var(--text1)", fontSize: isMobile ? 19 : 23, fontWeight: 900, letterSpacing: -0.5 }}>{campaignTitle}</div>
+              <div style={{ marginTop: 5, color: "var(--text3)", fontSize: 13, fontWeight: 650, lineHeight: 1.45 }}>{story.outcome || campaignCopy}</div>
+            </aside>
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article style={{ ...base, maxWidth: isMobile ? "none" : 960, borderColor: played ? `color-mix(in srgb, ${resColor} 45%, var(--border))` : "var(--border)" }}>
@@ -3698,7 +4101,8 @@ function FasitView({ fasit, showBonus, theme }) {
   const isMobile = useIsMobile();
   const secStyle = isMobile ? { ...S.fasitSection, padding: 13 } : S.fasitSection;
   const anyGroupData = GROUP_KEYS.some((g) => fasit.groups[g].first);
-  const anyMatchData = Object.values(fasit.matches).some(Boolean);
+  const anyMatchData = Object.values(fasit.matches).some(Boolean)
+    || Object.values(fasit.matchups || {}).some((pair) => Array.isArray(pair) && pair.some(Boolean));
   const thirdPlaced = fasit.thirds || [];
 
   return (
@@ -4675,6 +5079,34 @@ const CSS = `
   @keyframes fall {
     0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
     100% { transform: translateY(640px) rotate(720deg); opacity: 0.3; }
+  }
+  .leaderboard-shell::before {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--accent) 28%, #D8B15A 50%, var(--accent) 72%, transparent 100%);
+    opacity: 0.72;
+    pointer-events: none;
+  }
+  .leaderboard-header {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg4) 54%, transparent), color-mix(in srgb, var(--bg3) 86%, transparent));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .leaderboard-row:hover {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(255,255,255,0.03);
+  }
+  .leaderboard-row-open {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(255,255,255,0.04);
+  }
+  .leaderboard-row-champion {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(216,177,90,0.08);
+  }
+  .leaderboard-row-medal {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
   }
   .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }

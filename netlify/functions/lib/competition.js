@@ -130,6 +130,7 @@ export function emptyFasit() {
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, { first: "", second: "" }])),
     thirds: Array(8).fill(""),
     matches: {},
+    matchups: {},
     sfLosers: { 101: "", 102: "" },
     bronse: "",
     finale: "",
@@ -144,6 +145,7 @@ export function mergeLiveResults(currentFasit, liveResults) {
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, { ...(base.groups?.[g] || {}) }])),
     thirds: [...(base.thirds || [])],
     matches: { ...(base.matches || {}) },
+    matchups: { ...(base.matchups || {}) },
     sfLosers: { ...(base.sfLosers || {}) },
     quiz: [...(base.quiz || [])],
   };
@@ -162,6 +164,11 @@ export function mergeLiveResults(currentFasit, liveResults) {
       if (winner) merged.matches[m] = winner;
     }
   }
+  if (liveResults?.matchups) {
+    for (const [m, teams] of Object.entries(liveResults.matchups)) {
+      if (Array.isArray(teams) && teams.some(Boolean)) merged.matchups[m] = teams.slice(0, 2);
+    }
+  }
   if (liveResults?.sfLosers) {
     for (const m of ["101", "102"]) {
       if (liveResults.sfLosers[m]) merged.sfLosers[m] = liveResults.sfLosers[m];
@@ -178,6 +185,11 @@ export function liveResultsSignature(fasit) {
   for (const key of Object.keys(f.matches || {}).sort((a, b) => Number(a) - Number(b))) {
     matches[key] = f.matches[key] || "";
   }
+  const matchups = {};
+  for (const key of Object.keys(f.matchups || {}).sort((a, b) => Number(a) - Number(b))) {
+    const pair = Array.isArray(f.matchups[key]) ? f.matchups[key] : [];
+    matchups[key] = [pair[0] || "", pair[1] || ""];
+  }
   return JSON.stringify({
     groups: Object.fromEntries(GROUP_KEYS.map((g) => [g, {
       first: f.groups?.[g]?.first || "",
@@ -185,6 +197,7 @@ export function liveResultsSignature(fasit) {
     }])),
     thirds: (f.thirds || []).map((v) => v || ""),
     matches,
+    matchups,
     sfLosers: {
       101: f.sfLosers?.[101] || "",
       102: f.sfLosers?.[102] || "",
@@ -292,6 +305,14 @@ export function buildLiveFasitFromFeeds({ teamsData, groupsData, gamesData }) {
   while (result.thirds.length < 8) result.thirds.push("");
 
   for (const g of (gamesData?.games || [])) {
+    const mn = parseInt(g.id, 10);
+    if (!mn) continue;
+    const home = toNorwegian(g.home_team_name_en || "");
+    const away = toNorwegian(g.away_team_name_en || "");
+    if (mn >= 73 && mn <= 88 && (home || away)) {
+      result.matchups[String(mn)] = [home, away];
+    }
+
     if (!isFinishedGame(g)) continue;
     const homeScore = firstNumber(g.home_score);
     const awayScore = firstNumber(g.away_score);
@@ -304,12 +325,8 @@ export function buildLiveFasitFromFeeds({ teamsData, groupsData, gamesData }) {
       homeWon = homePenalty > awayPenalty;
     }
 
-    const home = toNorwegian(g.home_team_name_en || "");
-    const away = toNorwegian(g.away_team_name_en || "");
     const winner = homeWon ? home : away;
     const loser = homeWon ? away : home;
-    const mn = parseInt(g.id, 10);
-    if (!mn) continue;
     if (mn >= 73 && mn <= 102) {
       result.matches[String(mn)] = winner;
       if (mn === 101 || mn === 102) result.sfLosers[String(mn)] = loser;

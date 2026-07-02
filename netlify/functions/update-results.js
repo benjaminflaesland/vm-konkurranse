@@ -47,6 +47,13 @@ function worldCupComplete(gamesData) {
   return (gamesData?.games || []).some((game) => String(game.id) === "104" && isFinishedGame(game));
 }
 
+function hasR32Matchups(fasit) {
+  const matchups = fasit?.matchups || {};
+  return Array.from({ length: 16 }, (_, i) => String(73 + i)).every((id) =>
+    Array.isArray(matchups[id]) && matchups[id].some(Boolean)
+  );
+}
+
 async function readCompetitionData(store) {
   return await store.get(BLOB_KEY, { type: "json" }).catch(() => null) || {};
 }
@@ -65,7 +72,7 @@ async function updateFromFinishedMatches(store, startedAt) {
   if (!finishedSignature) {
     return { ok: true, skipped: "no-finished-matches", checkedAt: startedAt };
   }
-  if (current.liveUpdate?.finishedGamesSignature === finishedSignature) {
+  if (current.liveUpdate?.finishedGamesSignature === finishedSignature && hasR32Matchups(current.fasit)) {
     return { ok: true, skipped: "no-new-finished-matches", checkedAt: startedAt };
   }
 
@@ -77,7 +84,7 @@ async function updateFromFinishedMatches(store, startedAt) {
   // Re-read before writing so a manual admin save made during the live fetch is
   // preserved and scored against the latest results.
   const latest = await readCompetitionData(store);
-  if (latest.liveUpdate?.finishedGamesSignature === finishedSignature) {
+  if (latest.liveUpdate?.finishedGamesSignature === finishedSignature && hasR32Matchups(latest.fasit)) {
     return { ok: true, skipped: "already-updated", checkedAt: startedAt };
   }
 
