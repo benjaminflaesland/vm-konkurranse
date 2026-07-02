@@ -812,6 +812,16 @@ function LockIcon({ size = 16 }) {
   );
 }
 
+function ChevronIcon({ size = 12, open = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{
+      display: "block", transform: open ? "rotate(180deg)" : "none", transition: "transform .2s ease",
+    }}>
+      <path d="M5 8.5 12 15.5 19 8.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // FotMob-style mirrored horizontal bracket (desktop / wide screens). Two halves of
 // the draw converge on a center column holding the final, the bronze match and the
 // champion. Connectors are rounded SVG paths drawn behind the cards.
@@ -2403,8 +2413,8 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
 
 function leaderboardGridColumns(isMobile, roundColumnWidth) {
   return isMobile
-    ? "28px 22px minmax(0, 1fr) 44px 14px"
-    : `28px 22px minmax(140px, 1fr) repeat(${ROUNDS.length}, ${roundColumnWidth}px) 44px 14px`;
+    ? "28px 22px minmax(0, 1fr) 74px"
+    : `28px 22px minmax(96px, 1fr) repeat(${ROUNDS.length}, ${roundColumnWidth}) 90px`;
 }
 
 const LEADERBOARD_RANK_LOOK = {
@@ -2472,8 +2482,8 @@ function LeaderboardEntry({ participant, rank, movement, isMobile, roundColumnWi
   return (
     <div style={{ borderBottom: divider ? "1px solid var(--border)" : "none" }}>
       <div className={rowClass} onClick={onToggle} style={{
-        position: "relative", display: "grid", gridTemplateColumns: leaderboardGridColumns(isMobile, roundColumnWidth), columnGap: isMobile ? 10 : 12,
-        alignItems: "center", padding: isMobile ? "15px 14px 15px 17px" : "16px 20px", cursor: "pointer",
+        position: "relative", display: "grid", gridTemplateColumns: leaderboardGridColumns(isMobile, roundColumnWidth), columnGap: isMobile ? 10 : "clamp(6px, 1.3vw, 12px)",
+        alignItems: "center", padding: isMobile ? "15px 14px 15px 17px" : "16px clamp(12px, 2.4vw, 20px)", cursor: "pointer",
         background: rowBackground,
         transition: "background .16s ease, box-shadow .16s ease",
       }}>
@@ -2517,21 +2527,28 @@ function LeaderboardEntry({ participant, rank, movement, isMobile, roundColumnWi
           {!excluded && <MovementPill movement={movement} compact={isMobile} />}
         </span>
         {!isMobile && ROUNDS.map((r) => (
-          <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", minWidth: 0 }}>
+          <span key={r.key} style={{ display: "flex", alignItems: "baseline", justifyContent: "center", minWidth: 0 }}>
             <span style={{ color: excluded ? "var(--text3)" : "var(--text1)", fontWeight: 700, fontSize: 13 }}>{participant.scores[r.key] || 0}</span>
           </span>
         ))}
-        <span style={{
-          justifySelf: "end", display: "inline-flex", alignItems: "center", justifyContent: "center",
-          minWidth: isMobile ? 44 : 58, height: isMobile ? 30 : 34, padding: isMobile ? "0 6px" : "0 11px",
-          borderRadius: 10, border: `1px solid color-mix(in srgb, ${totalColor} 34%, transparent)`,
-          background: totalBg, color: totalColor, fontWeight: 950, fontSize: isMobile ? 18 : 20, textAlign: "center",
-          boxShadow: !excluded ? `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 18px color-mix(in srgb, ${totalColor} 10%, transparent)` : "none",
-        }}>
-          {participant.total}
+        <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: isMobile ? 6 : 10 }}>
+          <span style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            minWidth: isMobile ? 44 : 58, height: isMobile ? 30 : 34, padding: isMobile ? "0 6px" : "0 11px",
+            borderRadius: 10, border: `1px solid color-mix(in srgb, ${totalColor} 34%, transparent)`,
+            background: totalBg, color: totalColor, fontWeight: 950, fontSize: isMobile ? 18 : 20, textAlign: "center",
+            boxShadow: !excluded ? `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 18px color-mix(in srgb, ${totalColor} 10%, transparent)` : "none",
+          }}>
+            {participant.total}
+          </span>
+          <span style={{
+            flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: isMobile ? 22 : 24, height: isMobile ? 22 : 24, borderRadius: "50%",
+            color: "var(--text3)", background: "var(--bg4)", border: "1px solid var(--border)",
+          }}>
+            <ChevronIcon size={12} open={open} />
+          </span>
         </span>
-        <span style={{ color: "var(--text4)", fontSize: 11, width: 14, textAlign: "center",
-          transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
       </div>
       {open && <StillingBreakdown picks={participant.picks} fasit={fasit} showBonus={showBonus} />}
     </div>
@@ -2539,11 +2556,12 @@ function LeaderboardEntry({ participant, rank, movement, isMobile, roundColumnWi
 }
 
 function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
-  // Show the focused rank/player/total layout before the per-round columns
-  // become crowded in a narrowed desktop or tablet window.
-  const isMobile = useIsMobile(1100);
+  // Round columns shrink fluidly (via clamp) as the window narrows, so they stay
+  // visible on tablets/small laptops. Only collapse to the compact rank/player/total
+  // layout once there's genuinely no room left for them.
+  const isMobile = useIsMobile(760);
   const [openId, setOpenId] = useState(null);
-  const roundColumnWidth = 68;
+  const roundColumnWidth = "clamp(46px, 5.8vw, 68px)";
   const toTotal = (p) => ({ ...p, total: cumulative(p, ROUNDS.length - 1) + (showBonus ? p.bonus || 0 : 0) });
   const ranked = participants.filter((p) => !isExcludedFromCompetition(p)).map(toTotal)
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
@@ -2577,17 +2595,19 @@ function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
         boxShadow: "0 20px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06)",
       }}>
         {!isMobile && <div className="leaderboard-header" style={{
-          display: "grid", gridTemplateColumns: leaderboardGridColumns(false, roundColumnWidth), columnGap: 12,
-          alignItems: "center", padding: "14px 20px 12px",
+          display: "grid", gridTemplateColumns: leaderboardGridColumns(false, roundColumnWidth), columnGap: "clamp(6px, 1.3vw, 12px)",
+          alignItems: "center", padding: "14px clamp(12px, 2.4vw, 20px) 12px",
           borderBottom: "1px solid color-mix(in srgb, var(--accent) 14%, var(--border))", color: "var(--text3)", fontSize: 10.5,
           fontWeight: 800, letterSpacing: 0.7, textTransform: "uppercase",
         }}>
           <span />
           <span />
           <span>Spiller</span>
-          {ROUNDS.map((r) => <span key={r.key} style={{ textAlign: "right" }}>{r.short}</span>)}
-          <span style={{ textAlign: "right", color: "var(--text3)" }}>Totalt</span>
-          <span />
+          {ROUNDS.map((r) => <span key={r.key} style={{ textAlign: "center", whiteSpace: "nowrap" }}>{r.short}</span>)}
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
+            <span style={{ minWidth: 58, textAlign: "center", color: "var(--text3)" }}>Totalt</span>
+            <span style={{ flexShrink: 0, width: 24 }} />
+          </span>
         </div>}
         {ranked.map((p, i) => (
           <LeaderboardEntry key={p.id} participant={p} rank={i + 1} movement={movementById.get(p.id)} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
