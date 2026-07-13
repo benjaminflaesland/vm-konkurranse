@@ -1,18 +1,22 @@
-import { randomUUID } from "node:crypto";
 import { connectLambda, getStore } from "@netlify/blobs";
 
 const STORE_NAME = "vm2026";
-const ROW_PREFIX = "supporter-rows/";
+const COUNT_KEY = "supporter-count-v2";
+const LEGACY_ROW_PREFIX = "supporter-rows/";
 
 const HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
   "Content-Type": "application/json",
+  "Cache-Control": "no-store",
 };
 
-async function rowCount(store) {
-  const pages = await store.list({ prefix: ROW_PREFIX, paginate: true });
+const response = (statusCode, body) => ({
+  statusCode,
+  headers: HEADERS,
+  body: body === undefined ? "" : JSON.stringify(body),
+});
+
+async function legacyRowCount(store) {
+  const pages = await store.list({ prefix: LEGACY_ROW_PREFIX, paginate: true });
   if (typeof pages?.[Symbol.asyncIterator] === "function") {
     let count = 0;
     for await (const page of pages) count += page.blobs.length;
@@ -21,23 +25,49 @@ async function rowCount(store) {
   return pages?.blobs?.length || 0;
 }
 
-const response = (statusCode, body) => ({ statusCode, headers: HEADERS, body: JSON.stringify(body) });
+async function readCounter(store) {
+  const current = await store.get(COUNT_KEY, { type: "json" });
+  if (Number.isInteger(current?.count) && current.count >= 0) return current;
+  const count = await legacyRowCount(store);
+  const migrated = { count, migratedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  await store.setJSON(COUNT_KEY, migrated);
+  return migrated;
+}
 
 export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: HEADERS, body: "" };
-  if (!["GET", "POST"].includes(event.httpMethod)) return { statusCode: 405, headers: HEADERS, body: "" };
+  if (event.httpMethod === "OPTIONS") return response(204);
+  if (!["GET", "POST"].includes(event.httpMethod)) return response(405, { error: "Metoden støttes ikke" });
 
   try {
     connectLambda(event);
     const store = getStore(STORE_NAME);
+    const current = await readCounter(store);
+    if (event.httpMethod === "GET") return response(200, { count: current.count });
 
-    if (event.httpMethod === "POST") {
-      const createdAt = new Date().toISOString();
-      await store.setJSON(`${ROW_PREFIX}${Date.now()}-${randomUUID()}`, { createdAt });
+    let request = {};
+    try { request = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Ugyldig JSON" }); }
+    const delta = request.delta === undefined ? 1 : Number(request.delta);
+    if (!Number.isInteger(delta) || delta < 1 || delta > 10) {
+      return response(422, { error: "delta må være et heltall mellom 1 og 10" });
     }
 
-    return response(200, { count: await rowCount(store) });
+    const next = {
+      ...current,
+      count: current.count + delta,
+      updatedAt: new Date().toISOString(),
+    };
+    await store.setJSON(COUNT_KEY, next);
+    return response(200, { count: next.count });
   } catch (error) {
-    return response(500, { error: error.message || "Kunne ikke telle åretak" });
+    console.error("Kunne ikke oppdatere supporter-telleren:", error.message);
+    return response(503, { error: "Kunne ikke telle åretak" });
   }
+};
+
+export const config = {
+  rateLimit: {
+    windowLimit: 30,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"],
+  },
 };

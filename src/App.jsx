@@ -342,16 +342,18 @@ async function deleteAdminSession() {
   await fetch("/.netlify/functions/auth", { method: "DELETE" });
 }
 
-async function supporterRows(method = "GET") {
+async function supporterRows(method = "GET", delta = 1) {
   if (import.meta.env.DEV) {
     const stored = Number(localStorage.getItem(SUPPORTER_ROW_DEV_KEY));
     const count = Number.isFinite(stored) && stored >= 0 ? stored : 0;
-    const next = method === "POST" ? count + 1 : count;
+    const next = method === "POST" ? count + delta : count;
     if (method === "POST") localStorage.setItem(SUPPORTER_ROW_DEV_KEY, String(next));
     return next;
   }
 
-  const res = await fetch(SUPPORTER_ROW_ENDPOINT, { method });
+  const res = await fetch(SUPPORTER_ROW_ENDPOINT, method === "POST"
+    ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ delta }) }
+    : { method });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !Number.isFinite(body.count)) throw new Error(body.error || "Kunne ikke hente åretak");
   return body.count;
@@ -1197,7 +1199,16 @@ function isExcelTeamPick(value) {
   return isOfficialTeam(value);
 }
 
-function answerSheet(wb) {
+export function readExcelCell(sheetData, address) {
+  const match = /^([A-Z]+)(\d+)$/i.exec(address);
+  if (!match) throw new Error(`Ugyldig Excel-celle: ${address}`);
+  const column = match[1].toUpperCase().split("").reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0);
+  const row = Number(match[2]);
+  const value = sheetData?.[row - 1]?.[column - 1];
+  return value === undefined || value === null ? "" : String(value).trim();
+}
+
+function answerSheet(sheets) {
   const knockoutAddresses = [
     ...Object.values(CELLS.r16),
     ...Object.values(CELLS.r8),
@@ -1212,12 +1223,9 @@ function answerSheet(wb) {
   ];
   let best = null;
 
-  for (const sheetName of wb.SheetNames) {
-    const sheet = wb.Sheets[sheetName];
-    const read = (addr) => {
-      const cell = sheet?.[addr];
-      return cell?.v === undefined || cell?.v === null ? "" : String(cell.v).trim();
-    };
+  for (const sheetEntry of sheets) {
+    const sheet = sheetEntry.data;
+    const read = (addr) => readExcelCell(sheet, addr);
     const isTemplate = ANSWER_SHEET_SIGNATURE.every(([addr, label]) =>
       normalizeExcelLabel(read(addr)).startsWith(label)
     );
@@ -1234,12 +1242,10 @@ function answerSheet(wb) {
   return best.sheet;
 }
 
-function parseWorkbook(wb, filename) {
-  const ws = answerSheet(wb);
+export function parseWorkbook(sheets, filename) {
+  const ws = answerSheet(sheets);
   const val = (addr) => {
-    const c = ws[addr];
-    if (!c || c.v === undefined || c.v === null) return "";
-    const v = String(c.v).trim();
+    const v = readExcelCell(ws, addr);
     return v === "0" ? "" : v;
   };
   const team = (addr) => canonicalTeam(val(addr));
@@ -1264,7 +1270,7 @@ function parseWorkbook(wb, filename) {
   picks.quiz = CELLS.quiz.map(val);
 
   // Navn fra filnavn: "Fotball_VM_2026_konkurranse_-_Ola_Nordmann.xlsx"
-  let name = filename.replace(/\.(xlsx|xls)$/i, "");
+  let name = filename.replace(/\.xlsx$/i, "");
   const dashIdx = name.lastIndexOf("-");
   if (dashIdx >= 0) name = name.slice(dashIdx + 1);
   name = name.replace(/_/g, " ").trim() || "Ukjent";
@@ -1806,14 +1812,18 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
   };
 
   const handleFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
+    const selectedFiles = Array.from(e.target.files || []);
+    const files = selectedFiles.slice(0, 20);
     if (!files.length) return;
-    setImportMsg("Åpner Excel-leser …");
-    let XLSX;
+    const truncated = selectedFiles.length > files.length;
+    setImportMsg(truncated
+      ? "Maks 20 filer kan importeres om gangen. Åpner de første 20 …"
+      : "Åpner Excel-leser …");
+    let readExcelFile;
     try {
       // Keep the heavy spreadsheet parser out of the public first-load bundle.
       // Vite caches this chunk after the first admin import in a session.
-      XLSX = await import("xlsx");
+      ({ default: readExcelFile } = await import("read-excel-file/browser"));
     } catch (err) {
       console.error("Kunne ikke laste Excel-leser", err);
       setImportMsg("Kunne ikke laste Excel-leser. Prøv igjen.");
@@ -1825,9 +1835,10 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
     let next = [...participants];
     for (const file of files) {
       try {
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf);
-        const { name, picks } = parseWorkbook(wb, file.name);
+        if (!file.name.toLowerCase().endsWith(".xlsx")) throw new Error("Kun .xlsx støttes");
+        if (file.size > 5 * 1024 * 1024) throw new Error("Filen er større enn 5 MB");
+        const sheets = await readExcelFile(file);
+        const { name, picks } = parseWorkbook(sheets, file.name);
         const existing = next.findIndex((p) => p.name.toLowerCase() === name.toLowerCase());
         if (existing >= 0) {
           next[existing] = { ...next[existing], picks };
@@ -1847,7 +1858,8 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
     }
     if (added || updated) setParticipants(next);
     const failedText = failedFiles.length ? ` Ikke importert: ${failedFiles.join(", ")}.` : "";
-    setImportMsg(`Importert: ${added} nye, ${updated} oppdatert.${failedText}`);
+    const truncatedText = truncated ? " Kun de første 20 valgte filene ble behandlet." : "";
+    setImportMsg(`Importert: ${added} nye, ${updated} oppdatert.${failedText}${truncatedText}`);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -1873,7 +1885,7 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <label style={S.fileBtn}>
             Velg filer
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" multiple
+            <input ref={fileRef} type="file" accept=".xlsx" multiple
               onChange={handleFiles} style={{ display: "none" }} />
           </label>
           {anyPicks && (
@@ -2981,7 +2993,10 @@ function RowingSupporter() {
   const [count, setCount] = useState(readCachedSupporterCount);   // seeded from cache so refresh/tab-switch never dips
   const [error, setError] = useState("");
   const [stroke, setStroke] = useState(0);     // drives the rowing animation + chant
-  const queueRef = useRef(Promise.resolve());
+  const pendingStrokesRef = useRef(0);
+  const batchTimerRef = useRef(null);
+  const batchInFlightRef = useRef(false);
+  const flushBatchRef = useRef(null);
 
   // Strokes never un-happen, so the total only ever climbs. Lift towards any count
   // the server reports, but never let an eventually-consistent (briefly stale) read
@@ -3002,21 +3017,32 @@ function RowingSupporter() {
     return () => { active = false; };
   }, []);
 
+  const flushBatch = useCallback(async () => {
+    if (batchInFlightRef.current || pendingStrokesRef.current < 1) return;
+    const delta = Math.min(10, pendingStrokesRef.current);
+    pendingStrokesRef.current -= delta;
+    batchInFlightRef.current = true;
+    try {
+      liftTo(await supporterRows("POST", delta));
+    } catch {
+      setCount((prev) => Math.max(0, (prev ?? delta) - delta));
+      setError(delta === 1 ? "Åretaket ble ikke telt. Prøv igjen." : `${delta} åretak ble ikke telt. Prøv igjen.`);
+    } finally {
+      batchInFlightRef.current = false;
+      if (pendingStrokesRef.current > 0) batchTimerRef.current = window.setTimeout(() => flushBatchRef.current?.(), 0);
+    }
+  }, []);
+  flushBatchRef.current = flushBatch;
+
+  useEffect(() => () => window.clearTimeout(batchTimerRef.current), []);
+
   const row = () => {
-    setCount((prev) => (prev ?? 0) + 1);   // optimistic + immediate; stays put even if the server read lags
+    setCount((prev) => (prev ?? 0) + 1);
     setStroke((value) => value + 1);
     setError("");
-
-    queueRef.current = queueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        try {
-          liftTo(await supporterRows("POST"));
-        } catch {
-          setCount((prev) => Math.max(0, (prev ?? 1) - 1));   // the stroke didn't land — take it back
-          setError("Åretaket ble ikke telt. Prøv igjen.");
-        }
-      });
+    pendingStrokesRef.current += 1;
+    window.clearTimeout(batchTimerRef.current);
+    batchTimerRef.current = window.setTimeout(() => flushBatchRef.current?.(), 500);
   };
 
   const formattedCount = count === null ? "…" : new Intl.NumberFormat("nb-NO").format(count);
