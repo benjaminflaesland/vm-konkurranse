@@ -233,8 +233,8 @@ const PALETTE = [
   "#6366F1", "#0EA5E9", "#D946EF", "#F59E0B", "#22C55E",
 ];
 
-const STORAGE_KEY = "vm2026_ranking_data_v2";
 const PUBLIC_CACHE_KEY = "vm2026_public_cache_v1";
+const LEGACY_ADMIN_STORAGE_KEY = "vm2026_ranking_data_v2";
 const LAST_PUBLIC_MODE_KEY = "vm2026_last_public_mode";
 const SUPPORTER_ROW_ENDPOINT = "/.netlify/functions/supporter-row";
 const SUPPORTER_ROW_DEV_KEY = "vm2026_supporter_rows_dev";
@@ -322,23 +322,46 @@ const DEMO_DATA = import.meta.env.DEV ? (() => {
   return { participants, fasit };
 })() : null;
 
-async function saveData(data, adminPassword) {
-  const payload = { ...data, updatedAt: new Date().toISOString() };
-  writeLocalData(payload, true);
-  if (!adminPassword) throw new Error("Mangler admin-tilgang for lagring");
-
+async function saveData(data, baseRevision) {
   const res = await fetch("/.netlify/functions/data", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${adminPassword}`,
-    },
-    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: { ...data, schemaVersion: 3 }, baseRevision }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body.ok) {
-    throw new Error(body.error || `Serveren svarte med ${res.status}`);
+    const error = new Error(body.error || `Serveren svarte med ${res.status}`);
+    error.status = res.status;
+    error.revision = body.revision;
+    throw error;
   }
+  return body;
+}
+
+async function readAdminSession() {
+  const res = await fetch("/.netlify/functions/auth", { cache: "no-store" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "Kunne ikke kontrollere adminsesjonen");
+  return body;
+}
+
+async function createAdminSession(password) {
+  const res = await fetch("/.netlify/functions/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) {
+    const error = new Error(body.error || "Innlogging feilet");
+    error.status = res.status;
+    throw error;
+  }
+  return body;
+}
+
+async function deleteAdminSession() {
+  await fetch("/.netlify/functions/auth", { method: "DELETE" });
 }
 
 async function supporterRows(method = "GET") {
@@ -356,43 +379,41 @@ async function supporterRows(method = "GET") {
   return body.count;
 }
 
-function readLocalData(adminPassword) {
+function readPublicCache() {
   try {
-    const cached = localStorage.getItem(adminPassword ? STORAGE_KEY : PUBLIC_CACHE_KEY);
+    const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
     return cached ? JSON.parse(cached) : null;
   } catch {
     return null;
   }
 }
 
-function writeLocalData(data, adminPassword) {
-  try { localStorage.setItem(adminPassword ? STORAGE_KEY : PUBLIC_CACHE_KEY, JSON.stringify(data)); } catch {}
+function writePublicCache(data) {
+  try { localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(data)); } catch {}
 }
 
-async function loadData(adminPassword) {
-  const localData = readLocalData(adminPassword);
-
+async function loadData({ allowPublicCache = false } = {}) {
   try {
-    const res = await fetch("/.netlify/functions/data", adminPassword
-      ? { headers: { "Authorization": `Bearer ${adminPassword}` } }
-      : undefined);
+    const res = await fetch("/.netlify/functions/data", { cache: "no-store" });
+    const body = await res.json().catch(() => ({}));
     if (res.ok) {
-      const d = await res.json();
-      if (d?.participants) {
-        // If a previous authenticated write failed, preserve that newer local
-        // import and let the save queue retry it once the page has loaded.
-        if (adminPassword && localData?.updatedAt && (!d.updatedAt || localData.updatedAt > d.updatedAt)) {
-          return localData;
-        }
-        // Public visitors can paint this saved copy immediately next time, then
-        // refresh it quietly in the background.
-        writeLocalData(d, adminPassword);
-        return d;
+      if (body?.data?.participants) {
+        if (allowPublicCache) writePublicCache(body.data);
+        return body;
       }
     }
-  } catch {}
-  return localData;
+    throw new Error(body.error || `Serveren svarte med ${res.status}`);
+  } catch (error) {
+    if (allowPublicCache) {
+      const cached = readPublicCache();
+      if (cached?.participants) return { data: cached, revision: null, cached: true };
+    }
+    throw error;
+  }
 }
+
+const editableSnapshot = (participants, fasit, settings) => ({ participants, fasit, settings });
+const snapshotSignature = (snapshot) => JSON.stringify(snapshot);
 
 // ── Hjelpere ──
 const norm = (s) =>
@@ -1642,18 +1663,23 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const isMobile = useIsMobile();
   const isCompactHeader = useIsMobile(1080);
-  const [isAdmin, setIsAdmin] = useState(() =>
-    sessionStorage.getItem("vm_admin") === "1" && Boolean(sessionStorage.getItem("vm_pw"))
-  );
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [sessionState, setSessionState] = useState("checking");
   const [theme, setTheme] = useState(() => localStorage.getItem("vm_theme") || "dark");
-  const [adminPassword, setAdminPassword] = useState(() => sessionStorage.getItem("vm_pw") || "");
   const [logoClicks, setLogoClicks] = useState(0);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
   const logoClickTimer = useRef(null);
-  const saveQueueRef = useRef(Promise.resolve());
-  const saveVersionRef = useRef(0);
+  const hydratedAdminRef = useRef(false);
+  const revisionRef = useRef(null);
+  const lastSavedSnapshotRef = useRef("");
+  const pendingSaveRef = useRef(null);
+  const conflictSnapshotRef = useRef(null);
+  const saveTimerRef = useRef(null);
+  const saveInFlightRef = useRef(false);
+  const saveRetryRef = useRef(0);
+  const flushSaveRef = useRef(null);
   const [saveStatus, setSaveStatus] = useState({ state: "idle", message: "" });
   const participantsRef = useRef(participants);
   const fasitRef = useRef(fasit);
@@ -1668,6 +1694,65 @@ export default function App() {
     const snapshot = createLeaderboardSnapshot(before, sourceLabel);
     if (snapshot) setMovementSnapshot(snapshot);
   }, []);
+
+  const applyDataEnvelope = useCallback((envelope, sourceLabel, { adminBaseline = false } = {}) => {
+    const data = envelope?.data;
+    if (!data?.participants) return false;
+    const nextFasit = { ...emptyFasit(), ...(data.fasit || {}) };
+    const nextSettings = normalizeSettings(data.settings);
+    recordScoreboardMovement(participantsRef.current, data.participants, sourceLabel);
+    setParticipants(data.participants);
+    setFasit(nextFasit);
+    setSettings(nextSettings);
+    revisionRef.current = envelope.revision ?? null;
+    if (adminBaseline) {
+      lastSavedSnapshotRef.current = snapshotSignature(editableSnapshot(data.participants, nextFasit, nextSettings));
+    }
+    return true;
+  }, [recordScoreboardMovement]);
+
+  const flushPendingSave = useCallback(async () => {
+    if (saveInFlightRef.current || conflictSnapshotRef.current) return;
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    pendingSaveRef.current = null;
+    saveInFlightRef.current = true;
+    setSaveStatus({ state: "saving", message: "Lagrer endringer i skyen …" });
+    let retryScheduled = false;
+    try {
+      const result = await saveData(pending.snapshot, revisionRef.current);
+      revisionRef.current = result.revision;
+      lastSavedSnapshotRef.current = pending.signature;
+      saveRetryRef.current = 0;
+      if (!pendingSaveRef.current) setSaveStatus({ state: "saved", message: "Lagret i skyen" });
+    } catch (error) {
+      if (error.status === 409) {
+        conflictSnapshotRef.current = pending;
+        pendingSaveRef.current = null;
+        setSaveStatus({
+          state: "conflict",
+          message: "Nyere data finnes i skyen. Velg lokal eksport eller last inn skyversjonen.",
+        });
+      } else {
+        if (!pendingSaveRef.current) pendingSaveRef.current = pending;
+        if (saveRetryRef.current < 3) {
+          const retrySeconds = 2 ** saveRetryRef.current;
+          saveRetryRef.current += 1;
+          retryScheduled = true;
+          setSaveStatus({ state: "error", message: `Lagring feilet. Prøver igjen om ${retrySeconds} s …` });
+          saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), retrySeconds * 1000);
+        } else {
+          setSaveStatus({ state: "error", message: `Ikke lagret: ${error.message}` });
+        }
+      }
+    } finally {
+      saveInFlightRef.current = false;
+      if (!retryScheduled && !conflictSnapshotRef.current && pendingSaveRef.current) {
+        saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), 0);
+      }
+    }
+  }, []);
+  flushSaveRef.current = flushPendingSave;
 
   const applyLiveResults = useCallback((liveResults) => {
     const currentFasit = fasitRef.current;
@@ -1697,6 +1782,9 @@ export default function App() {
   }, [mode]);
 
   useEffect(() => {
+    let active = true;
+    try { localStorage.removeItem(LEGACY_ADMIN_STORAGE_KEY); } catch {}
+
     if (DEMO_DATA) {
       const demoFasit = { ...emptyFasit(), ...DEMO_DATA.fasit };
       // Derive scores from picks vs resultat (same as «Beregn poeng») so the
@@ -1711,65 +1799,77 @@ export default function App() {
         };
       }));
       setFasit(demoFasit);
+      setSessionState("public");
       setLoaded(true);
-      return;
+      return () => { active = false; };
     }
-    const cached = readLocalData(adminPassword);
+
+    const cached = readPublicCache();
     if (cached?.participants) setParticipants(cached.participants);
     if (cached?.fasit) setFasit({ ...emptyFasit(), ...cached.fasit });
     if (cached?.settings) setSettings(normalizeSettings(cached.settings));
     if (cached?.participants) setLoaded(true);
 
-    loadData(adminPassword).then((d) => {
-      if (d?.participants) {
-        recordScoreboardMovement(participantsRef.current, d.participants, "Siste skyoppdatering");
-        setParticipants(d.participants);
+    const hydrate = async () => {
+      try {
+        const session = await readAdminSession();
+        if (!active) return;
+        setSessionState(session.authenticated ? "admin-loading" : "public");
+        const envelope = await loadData({ allowPublicCache: !session.authenticated });
+        if (!active) return;
+        if (!applyDataEnvelope(envelope, "Siste skyoppdatering", { adminBaseline: session.authenticated })) {
+          throw new Error("Serveren returnerte ikke gyldige konkurransedata");
+        }
+        hydratedAdminRef.current = session.authenticated;
+        setIsAdmin(session.authenticated);
+        setSessionState(session.authenticated ? "admin" : "public");
+        setLoaded(true);
+      } catch (error) {
+        if (!active) return;
+        hydratedAdminRef.current = false;
+        setIsAdmin(false);
+        setSessionState("error");
+        if (!cached?.participants) setSaveStatus({ state: "error", message: error.message });
       }
-      if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
-      if (d?.settings) setSettings(normalizeSettings(d.settings));
-      setLoaded(true);
-    });
-  }, []);
+    };
+    hydrate();
+    return () => { active = false; };
+  }, [applyDataEnvelope]);
 
   useEffect(() => {
-    if (!loaded || !isAdmin || DEMO_DATA) return;
-
-    const version = ++saveVersionRef.current;
+    if (!loaded || !isAdmin || !hydratedAdminRef.current || DEMO_DATA || conflictSnapshotRef.current) return;
     const snapshot = { participants, fasit, settings };
-    setSaveStatus({ state: "saving", message: "Lagrer endringer i skyen …" });
+    const signature = snapshotSignature(snapshot);
+    if (signature === lastSavedSnapshotRef.current) return;
+    pendingSaveRef.current = { snapshot, signature };
+    window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), 750);
+    return () => window.clearTimeout(saveTimerRef.current);
+  }, [participants, fasit, settings, loaded, isAdmin]);
 
-    // Keep writes in order. This prevents an older request from overwriting a
-    // newer spreadsheet import when several changes happen in quick succession.
-    saveQueueRef.current = saveQueueRef.current
-      .catch(() => undefined)
-      .then(() => saveData(snapshot, adminPassword))
-      .then(() => {
-        if (version === saveVersionRef.current) {
-          setSaveStatus({ state: "saved", message: "Lagret i skyen" });
-        }
-      })
-      .catch((error) => {
-        if (version === saveVersionRef.current) {
-          setSaveStatus({ state: "error", message: `Ikke lagret: ${error.message}` });
-        }
-      });
-  }, [participants, fasit, settings, loaded, isAdmin, adminPassword]);
+  useEffect(() => {
+    const warnIfDirty = (event) => {
+      if (!pendingSaveRef.current && !saveInFlightRef.current && !conflictSnapshotRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnIfDirty);
+    return () => window.removeEventListener("beforeunload", warnIfDirty);
+  }, []);
 
   // Public viewers follow the admin-controlled ceremony without needing to reload.
   useEffect(() => {
-    if (!loaded || isAdmin || DEMO_DATA) return;
+    if (!loaded || sessionState !== "public" || DEMO_DATA) return;
     let active = true;
     const refresh = async () => {
-      const d = await loadData();
-      if (!active || !d?.participants) return;
-      recordScoreboardMovement(participantsRef.current, d.participants, "Siste skyoppdatering");
-      setParticipants(d.participants);
-      if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
-      if (d?.settings) setSettings(normalizeSettings(d.settings));
+      try {
+        const envelope = await loadData({ allowPublicCache: true });
+        if (active) applyDataEnvelope(envelope, "Siste skyoppdatering");
+      } catch {}
     };
     const interval = window.setInterval(refresh, 30000);
     return () => { active = false; window.clearInterval(interval); };
-  }, [loaded, isAdmin]);
+  }, [loaded, sessionState, applyDataEnvelope]);
 
   const handleLogoClock = () => {
     clearTimeout(logoClickTimer.current);
@@ -1785,28 +1885,72 @@ export default function App() {
   };
 
   const handlePasswordSubmit = async () => {
-    const res = await fetch("/.netlify/functions/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: passwordInput }),
-    });
-    const { ok } = await res.json();
-    if (ok) {
-      const d = await loadData(passwordInput);
-      if (d?.participants) setParticipants(d.participants);
-      if (d?.fasit) setFasit({ ...emptyFasit(), ...d.fasit });
-      if (d?.settings) setSettings(normalizeSettings(d.settings));
+    setPasswordError("");
+    try {
+      await createAdminSession(passwordInput);
+      setSessionState("admin-loading");
+      const envelope = await loadData();
+      if (!applyDataEnvelope(envelope, "Admininnlogging", { adminBaseline: true })) {
+        throw new Error("Kunne ikke hente komplett admindata");
+      }
+      hydratedAdminRef.current = true;
       setIsAdmin(true);
-      setAdminPassword(passwordInput);
-      sessionStorage.setItem("vm_admin", "1");
-      sessionStorage.setItem("vm_pw", passwordInput);
+      setSessionState("admin");
       setShowPasswordModal(false);
       setPasswordInput("");
-      setPasswordError(false);
       setMode("deltakere");
-    } else {
-      setPasswordError(true);
+    } catch (error) {
+      await deleteAdminSession().catch(() => undefined);
+      hydratedAdminRef.current = false;
+      setIsAdmin(false);
+      setSessionState("public");
+      setPasswordError(error.message || "Innlogging feilet");
     }
+  };
+
+  const handleLogout = async () => {
+    await deleteAdminSession().catch(() => undefined);
+    hydratedAdminRef.current = false;
+    revisionRef.current = null;
+    lastSavedSnapshotRef.current = "";
+    pendingSaveRef.current = null;
+    conflictSnapshotRef.current = null;
+    window.clearTimeout(saveTimerRef.current);
+    setIsAdmin(false);
+    setSessionState("public");
+    setSaveStatus({ state: "idle", message: "" });
+    setMode("stilling");
+    try {
+      const envelope = await loadData({ allowPublicCache: true });
+      applyDataEnvelope(envelope, "Offentlig visning");
+    } catch {}
+  };
+
+  const retrySave = () => {
+    saveRetryRef.current = 0;
+    window.clearTimeout(saveTimerRef.current);
+    flushSaveRef.current?.();
+  };
+
+  const exportUnsavedData = () => {
+    const pending = conflictSnapshotRef.current || pendingSaveRef.current;
+    if (!pending?.snapshot) return;
+    const blob = new Blob([JSON.stringify(pending.snapshot, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `vm-konkurranse-ulagret-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const reloadCloudVersion = async () => {
+    const envelope = await loadData();
+    applyDataEnvelope(envelope, "Skyversjon", { adminBaseline: true });
+    pendingSaveRef.current = null;
+    conflictSnapshotRef.current = null;
+    saveRetryRef.current = 0;
+    setSaveStatus({ state: "saved", message: "Skyversjonen er lastet inn" });
   };
 
   const setCeremony = (nextCeremony) => {
@@ -1854,15 +1998,15 @@ export default function App() {
               type="password"
               autoFocus
               value={passwordInput}
-              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(""); }}
               onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
               placeholder="Passord"
               style={{ ...S.input, marginBottom: 8 }}
             />
-            {passwordError && <div style={{ color: "#E8334A", fontSize: 13, marginBottom: 8 }}>Feil passord</div>}
+            {passwordError && <div style={{ color: "#E8334A", fontSize: 13, marginBottom: 8 }}>{passwordError}</div>}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={handlePasswordSubmit} style={S.calcBtn}>Logg inn</button>
-              <button onClick={() => { setShowPasswordModal(false); setPasswordInput(""); setPasswordError(false); }}
+              <button onClick={() => { setShowPasswordModal(false); setPasswordInput(""); setPasswordError(""); }}
                 style={{ ...S.addBtn }}>Avbryt</button>
             </div>
           </div>
@@ -1926,22 +2070,17 @@ export default function App() {
             {import.meta.env.DEV && (
               <button onClick={() => {
                 if (isAdmin) {
-                  setIsAdmin(false); setAdminPassword(""); setMode("stilling");
+                  setIsAdmin(false); setSessionState("public"); setMode("stilling");
                 } else {
-                  setIsAdmin(true); setAdminPassword("dev"); setMode("deltakere");
+                  setIsAdmin(true); setSessionState("admin"); setMode("deltakere");
                 }
               }} style={{ ...S.removeBtn, fontSize: 11, padding: "5px 10px", color: isAdmin ? "var(--accent)" : "#F5A623", borderColor: isAdmin ? "var(--accent)" : "#F5A62340" }}>
                 {isAdmin ? "ADMIN ON" : "ADMIN OFF"}
               </button>
             )}
             {isAdmin && !import.meta.env.DEV && (
-              <button title="Lås siden" onClick={() => {
-                setIsAdmin(false);
-                setAdminPassword("");
-                sessionStorage.removeItem("vm_admin");
-                sessionStorage.removeItem("vm_pw");
-                setMode("stilling");
-              }} style={{ ...S.removeBtn, fontSize: 12, fontWeight: 700, padding: "6px 10px", color: "var(--text3)", border: "1px solid var(--border)", borderRadius: 20 }}>Lås</button>
+              <button title="Lås siden" onClick={handleLogout}
+                style={{ ...S.removeBtn, fontSize: 12, fontWeight: 700, padding: "6px 10px", color: "var(--text3)", border: "1px solid var(--border)", borderRadius: 20 }}>Lås</button>
             )}
           </div>
         </div>
@@ -1957,6 +2096,7 @@ export default function App() {
           setParticipants={setParticipants}
           fasit={fasit}
           saveStatus={saveStatus}
+          saveActions={{ retrySave, exportUnsavedData, reloadCloudVersion }}
           recordScoreboardMovement={recordScoreboardMovement}
         />
       )}
@@ -1981,7 +2121,7 @@ export default function App() {
 // ─────────────────────────────────────────────
 // DELTAKERE — import + manuell redigering
 // ─────────────────────────────────────────────
-function Deltakere({ participants, setParticipants, fasit, saveStatus, recordScoreboardMovement }) {
+function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActions, recordScoreboardMovement }) {
   const narrowBracket = useIsMobile(1180);
   const [newName, setNewName] = useState("");
   const [importMsg, setImportMsg] = useState("");
@@ -2003,7 +2143,7 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, recordSco
     setParticipants([...participants, {
       id: crypto.randomUUID(), name,
       color: PALETTE[participants.length % PALETTE.length],
-      scores: {}, bonus: 0, picks: null,
+      scores: {}, bonus: 0, picks: null, excluded: false,
     }]);
     setNewName("");
   };
@@ -2048,7 +2188,7 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, recordSco
           next.push({
             id: crypto.randomUUID(), name,
             color: PALETTE[next.length % PALETTE.length],
-            scores: {}, bonus: 0, picks,
+            scores: {}, bonus: 0, picks, excluded: false,
           });
           added++;
         }
@@ -2097,10 +2237,19 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, recordSco
               role="status"
               style={{
                 ...S.importMsg,
-                color: saveStatus.state === "error" ? "#E8334A" : saveStatus.state === "saved" ? "var(--accent)" : "var(--text3)",
+                color: ["error", "conflict"].includes(saveStatus.state) ? "#E8334A" : saveStatus.state === "saved" ? "var(--accent)" : "var(--text3)",
               }}>
               {saveStatus.state === "saved" ? "✓ " : ""}{saveStatus.message}
             </span>
+          )}
+          {saveStatus.state === "error" && (
+            <button type="button" onClick={saveActions.retrySave} style={S.addBtn}>Prøv igjen</button>
+          )}
+          {saveStatus.state === "conflict" && (
+            <>
+              <button type="button" onClick={saveActions.exportUnsavedData} style={S.addBtn}>Last ned lokale endringer</button>
+              <button type="button" onClick={saveActions.reloadCloudVersion} style={S.calcBtn}>Last inn skyversjonen</button>
+            </>
           )}
         </div>
       </div>
