@@ -27,5 +27,11 @@ jobs:
           cache: npm
       - name: Install exact dependencies
         run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm run test
       - name: Build
         run: npm run build
+      - name: Audit high-severity vulnerabilities
+        run: npm audit --audit-level=high

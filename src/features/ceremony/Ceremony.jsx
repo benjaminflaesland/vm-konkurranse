@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import worldCupPrizeSilhouette from "../../assets/world-cup-prize-silhouette.webp";
 
 const ROUNDS = [
@@ -123,6 +123,8 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  // next/prev always use the same ceremony snapshot represented by these values.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, phase, step, bonusRevealed, competingParticipants.length, onExit]);
 
   const phaseLabel = phase === "rounds" ? ROUNDS[step].label

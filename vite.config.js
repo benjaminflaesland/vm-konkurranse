@@ -6,6 +6,11 @@ export default defineConfig({
   build: {
     target: 'es2022',
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './tests/setup.js',
+    restoreMocks: true,
+  },
   server: {
     port: process.env.PORT ? parseInt(process.env.PORT) : 5173,
     strictPort: false,

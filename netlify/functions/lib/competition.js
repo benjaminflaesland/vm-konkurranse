@@ -69,7 +69,11 @@ const TEAM_NAME_MAP = {
 };
 
 const TEAM_CONJ = new Set(["og", "and", "the", "of"]);
-const norm = (s) => String(s || "").toLowerCase().replace(/[^a-zæøåäöü0-9]/g, "");
+const norm = (s) => String(s || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .replace(/[^a-zæøå0-9]/g, "");
 const normTeam = (s) =>
   String(s || "").replace(/\u00a0/g, " ").toLowerCase()
     .split(/[^a-zæøåäöü0-9]+/).filter((t) => t && !TEAM_CONJ.has(t)).join("");

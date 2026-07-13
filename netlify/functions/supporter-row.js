@@ -46,6 +46,9 @@ export const handler = async (event) => {
 
     let request = {};
     try { request = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Ugyldig JSON" }); }
+    if (!request || typeof request !== "object" || Array.isArray(request)) {
+      return response(400, { error: "Ugyldig forespørsel" });
+    }
     const delta = request.delta === undefined ? 1 : Number(request.delta);
     if (!Number.isInteger(delta) || delta < 1 || delta > 10) {
       return response(422, { error: "delta må være et heltall mellom 1 og 10" });
