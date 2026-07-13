@@ -12,7 +12,22 @@ export function migrateCompetitionData(value) {
         return { ...participant, excluded: firstName === "benjamin" };
       })
     : value.participants;
-  return { ...value, schemaVersion: SCHEMA_VERSION, participants };
+  const currentCeremony = value.settings?.ceremony;
+  const eligible = Array.isArray(participants) ? participants.filter((participant) => !participant?.excluded) : [];
+  const needsFrozenBonusOrder = ["bonus", "winner"].includes(currentCeremony?.phase)
+    && !Array.isArray(currentCeremony?.bonusOrder);
+  const settings = needsFrozenBonusOrder
+    ? {
+        ...value.settings,
+        ceremony: {
+          ...currentCeremony,
+          bonusOrder: [...eligible]
+            .sort((a, b) => (a.bonus || 0) - (b.bonus || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+            .map((participant) => participant.id),
+        },
+      }
+    : value.settings;
+  return { ...value, schemaVersion: SCHEMA_VERSION, participants, settings };
 }
 
 export function validateCompetitionData(value) {
@@ -42,3 +57,45 @@ export function editableCompetitionData(value) {
   };
 }
 
+export function serializePublicCompetition(data) {
+  const ceremony = data.settings?.ceremony || {};
+  const participants = data.participants || [];
+  const eligible = participants.filter((participant) => !participant.excluded);
+  const bonusOrder = ceremony.phase === "bonus"
+    ? (ceremony.bonusOrder || [...eligible]
+        .sort((a, b) => (a.bonus || 0) - (b.bonus || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+        .map((participant) => participant.id))
+        .filter((id) => eligible.some((participant) => participant.id === id))
+    : [];
+  const revealCount = ceremony.phase === "winner"
+    ? eligible.length
+    : Math.max(0, Math.min(ceremony.bonusRevealed || 0, eligible.length));
+  const revealedBonusIds = bonusOrder.slice(0, revealCount);
+  const revealed = new Set(revealedBonusIds);
+  const revealEverything = ceremony.phase === "winner";
+
+  return {
+    schemaVersion: data.schemaVersion,
+    participants: participants.map((participant) => {
+      const { bonus, picks, ...safeParticipant } = participant;
+      return {
+        ...safeParticipant,
+        ...(revealEverything || revealed.has(participant.id) ? { bonus } : {}),
+        ...(picks ? { picks: revealEverything ? picks : { ...picks, quiz: [] } } : {}),
+      };
+    }),
+    fasit: data.fasit
+      ? { ...data.fasit, quiz: revealEverything ? data.fasit.quiz : Array((data.fasit.quiz || []).length).fill("") }
+      : data.fasit,
+    settings: {
+      ...data.settings,
+      ceremony: {
+        phase: ceremony.phase,
+        step: ceremony.step,
+        bonusRevealed: revealCount,
+        revealedBonusIds,
+      },
+    },
+    liveUpdate: data.liveUpdate,
+  };
+}
