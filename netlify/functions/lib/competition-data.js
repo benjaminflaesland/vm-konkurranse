@@ -73,22 +73,43 @@ export function serializePublicCompetition(data) {
   const revealedBonusIds = bonusOrder.slice(0, revealCount);
   const revealed = new Set(revealedBonusIds);
   const revealEverything = ceremony.phase === "winner";
+  const publicPicks = (picks) => picks ? {
+    groups: picks.groups,
+    thirds: picks.thirds,
+    matches: picks.matches,
+    matchups: picks.matchups,
+    sfLosers: picks.sfLosers,
+    bronse: picks.bronse,
+    finale: picks.finale,
+    quiz: revealEverything ? picks.quiz : [],
+  } : undefined;
+  const publicFasit = data.fasit ? {
+    groups: data.fasit.groups,
+    thirds: data.fasit.thirds,
+    matches: data.fasit.matches,
+    matchups: data.fasit.matchups,
+    sfLosers: data.fasit.sfLosers,
+    bronse: data.fasit.bronse,
+    finale: data.fasit.finale,
+    quiz: revealEverything ? data.fasit.quiz : Array((data.fasit.quiz || []).length).fill(""),
+  } : data.fasit;
 
   return {
     schemaVersion: data.schemaVersion,
     participants: participants.map((participant) => {
-      const { bonus, picks, ...safeParticipant } = participant;
       return {
-        ...safeParticipant,
-        ...(revealEverything || revealed.has(participant.id) ? { bonus } : {}),
-        ...(picks ? { picks: revealEverything ? picks : { ...picks, quiz: [] } } : {}),
+        id: participant.id,
+        name: participant.name,
+        color: participant.color,
+        scores: participant.scores,
+        excluded: participant.excluded,
+        ...(revealEverything || revealed.has(participant.id) ? { bonus: participant.bonus } : {}),
+        ...(participant.picks ? { picks: publicPicks(participant.picks) } : {}),
       };
     }),
-    fasit: data.fasit
-      ? { ...data.fasit, quiz: revealEverything ? data.fasit.quiz : Array((data.fasit.quiz || []).length).fill("") }
-      : data.fasit,
+    fasit: publicFasit,
     settings: {
-      ...data.settings,
+      ceremonyUnlocked: Boolean(data.settings?.ceremonyUnlocked),
       ceremony: {
         phase: ceremony.phase,
         step: ceremony.step,
@@ -96,6 +117,5 @@ export function serializePublicCompetition(data) {
         revealedBonusIds,
       },
     },
-    liveUpdate: data.liveUpdate,
   };
 }

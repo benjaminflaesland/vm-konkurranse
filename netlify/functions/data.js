@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { connectLambda, getStore } from "@netlify/blobs";
 import { readAdminSession } from "./lib/auth-session.js";
+import { backupCompetitionData } from "./lib/competition-backups.js";
 import {
   editableCompetitionData,
   migrateCompetitionData,
@@ -9,8 +10,6 @@ import {
 } from "./lib/competition-data.js";
 
 const BLOB_KEY = "competition-data";
-const BACKUP_PREFIX = "competition-backups/";
-const BACKUP_LIMIT = 20;
 
 const HEADERS = {
   "Content-Type": "application/json",
@@ -30,23 +29,6 @@ async function readStoredData(store) {
   const validation = validateCompetitionData(migrated);
   if (!validation.ok) throw new Error(`Ugyldig lagret datasett: ${validation.error}`);
   return migrated;
-}
-
-async function backupCurrentData(store, current) {
-  if (!current?.participants) return;
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  await store.setJSON(`${BACKUP_PREFIX}${timestamp}-${current.revision || randomUUID()}`, current);
-  try {
-    const result = await store.list({ prefix: BACKUP_PREFIX });
-    const stale = (result.blobs || [])
-      .map((entry) => entry.key)
-      .sort()
-      .reverse()
-      .slice(BACKUP_LIMIT);
-    await Promise.all(stale.map((key) => store.delete(key)));
-  } catch (error) {
-    console.warn("Kunne ikke rydde gamle konkurransebackuper:", error.message);
-  }
 }
 
 export const handler = async (event) => {
@@ -79,6 +61,9 @@ export const handler = async (event) => {
   } catch {
     return response(400, { error: "Ugyldig JSON" });
   }
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    return response(400, { error: "Ugyldig forespørsel" });
+  }
 
   const requestedData = migrateCompetitionData(request.data);
   const validation = validateCompetitionData(requestedData);
@@ -95,7 +80,7 @@ export const handler = async (event) => {
       });
     }
 
-    await backupCurrentData(store, current);
+    await backupCompetitionData(store, current);
     const revision = randomUUID();
     const updatedAt = new Date().toISOString();
     const next = {

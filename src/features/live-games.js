@@ -126,7 +126,7 @@ export function loadLiveGames() {
         liveGamesLoadedAt = Date.now();
         try {
           localStorage.setItem(LIVE_GAMES_CACHE_KEY, JSON.stringify({ games, cachedAt: liveGamesLoadedAt }));
-        } catch {}
+        } catch { /* Livekampene fungerer uten persistent nettlesercache. */ }
         return games;
       })
       .finally(() => {

@@ -9,6 +9,7 @@ import {
   mergeLiveResults,
   recalculateParticipantScores,
 } from "./lib/competition.js";
+import { backupCompetitionData } from "./lib/competition-backups.js";
 import { migrateCompetitionData } from "./lib/competition-data.js";
 
 const BLOB_KEY = "competition-data";
@@ -99,6 +100,7 @@ async function updateFromFinishedMatches(store, startedAt) {
   const complete = worldCupComplete(gamesData);
   const revision = randomUUID();
 
+  await backupCompetitionData(store, latest);
   await store.setJSON(BLOB_KEY, {
     ...latest,
     participants: nextParticipants,

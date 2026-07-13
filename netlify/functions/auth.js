@@ -33,14 +33,17 @@ export const handler = async (event) => {
 
   if (event.httpMethod !== "POST") return response(405, { error: "Metoden støttes ikke" });
 
-  let password = "";
+  let request;
   try {
-    ({ password } = JSON.parse(event.body || "{}"));
+    request = JSON.parse(event.body || "{}");
   } catch {
     return response(400, { ok: false, error: "Ugyldig JSON" });
   }
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    return response(400, { ok: false, error: "Ugyldig forespørsel" });
+  }
 
-  if (!verifyPassword(password)) return response(401, { ok: false, error: "Feil passord" });
+  if (!verifyPassword(request.password)) return response(401, { ok: false, error: "Feil passord" });
 
   try {
     const session = createAdminSession();

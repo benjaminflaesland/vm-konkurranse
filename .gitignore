@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.local
+backups/
 .vercel
 .DS_Store
 .claude/

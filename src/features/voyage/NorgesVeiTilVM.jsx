@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toNorwegian } from "../../../shared/competition.js";
 import { Flag, codeOf } from "../../components/Flag.jsx";
+import { VikingHorn } from "../../components/VikingHorn.jsx";
 import { formatCountdown, parseGameDate, useLiveGames } from "../live-games.js";
 import { useIsMobile } from "../../hooks/useMediaQuery.js";
 import norseKnitBand from "../../assets/norse-knit-band.webp";
@@ -374,13 +375,13 @@ export default function NorgesVeiTilVM() {
     if (containerRef.current) ro.observe(containerRef.current);
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  }, [isMobile, CX, AMP, vmNodes.length]);
+  }, [isMobile, LANE_W, CX, AMP, vmNodes.length]);
 
   // Build a length→point lookup table from the rendered path (before paint, no flash).
   useLayoutEffect(() => {
     const p = baseRef.current;
     if (!p || !geo.pathD) return;
-    let total = 0;
+    let total;
     try { total = p.getTotalLength(); } catch { return; }
     const N = 260, lut = [];
     for (let i = 0; i <= N; i++) {

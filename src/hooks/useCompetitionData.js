@@ -14,7 +14,7 @@ function readPublicCache() {
 function writePublicCache(data) {
   try {
     localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(data));
-  } catch {}
+  } catch { /* Nettleseren kan blokkere lokal lagring; serverdata er fortsatt gyldige. */ }
 }
 
 async function load({ allowPublicCache = false } = {}) {

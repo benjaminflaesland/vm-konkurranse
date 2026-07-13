@@ -1,74 +1,28 @@
-# VM Konkurranse – Deploy til GitHub og Vercel
+# Produksjonsdeploy og rollback
 
-## Hva skal gjøres
-1. Sett opp prosjektet lokalt
-2. Push til GitHub
-3. Koble til Vercel
+## Før merge
 
-## Steg 1 – Installer avhengigheter
+- Kjør `npm run check`.
+- Kontroller at Deploy Preview bruker Node 24 og riktige, separate preview-hemmeligheter.
+- Test offentlig visning, admininnlogging, XLSX-import, autosave, konfliktvalg og logout.
+- Test seremonifasene; offentlig klient skal bare få avslørte bonuser.
+- Kontroller supporterbatching og livekampvisning i desktop- og mobilbredde.
+
+## Før første produksjonsdeploy
+
 ```bash
-cd vm-konkurranse
-npm install
+NETLIFY_SITE_ID=... NETLIFY_AUTH_TOKEN=... npm run backup
 ```
 
-## Steg 2 – Test lokalt
-```bash
-npm run dev
-```
-Åpne http://localhost:5173 og sjekk at appen fungerer.
+Bekreft at snapshotfilen finnes lokalt og oppbevares sikkert utenfor Git. Kontroller også at `ADMIN_PASSWORD` og `ADMIN_SESSION_SECRET` er satt i Production-context, og at session secret er minst 32 tilfeldige tegn.
 
-## Steg 3 – Push til GitHub
-```bash
-git init
-git add .
-git commit -m "VM 2026 tippekonkurranse – første versjon"
-gh repo create vm-konkurranse --public --push --source=.
-```
-(Krever GitHub CLI: https://cli.github.com)
+## Deploy
 
-Alternativt: Lag repo manuelt på github.com og følg instruksjonene der.
+1. Squash-merge PR-en etter at `quality` passerer.
+2. Vent på Netlify production deploy.
+3. Gjør en kort smoke-test: innlogging, import, lagring, offentlig resultat, kåring og planlagt resultatfunksjon.
+4. Kontroller Functions-loggene for `401`, `409`, `422` og `503` som ikke er forventet.
 
-## Steg 4 – Deploy til Vercel
-```bash
-npx vercel
-```
-Følg wizard: 
-- Link to existing project? No
-- Project name: vm-konkurranse
-- Framework: Vite
-- Build command: npm run build
-- Output directory: dist
+## Rollback
 
-## Steg 5 – Legg til miljøvariabler i Vercel
-Gå til: vercel.com → ditt prosjekt → Settings → Environment Variables
-
-Legg til:
-- Name: ANTHROPIC_API_KEY
-- Value: sk-ant-... (din Anthropic API-nøkkel)
-- Environment: Production, Preview, Development
-
-## Steg 6 – Redeploy
-```bash
-npx vercel --prod
-```
-
-## Filstruktur
-```
-vm-konkurranse/
-├── api/
-│   ├── claude.js     ← Proxy til Anthropic API (holder nøkkel server-side)
-│   └── wc.js         ← Proxy til worldcup26.ir (løser CORS)
-├── src/
-│   ├── App.jsx       ← Hele appen
-│   └── main.jsx      ← React entry point
-├── index.html
-├── package.json
-├── vite.config.js
-└── .gitignore
-```
-
-## Viktige noter
-- `api/wc.js` proxyer worldcup26.ir-kall for å unngå CORS-feil
-- `api/claude.js` proxyer Anthropic API så nøkkelen aldri er synlig i frontend
-- Data lagres i localStorage (per bruker, per nettleser)
-- Trykk "🔄 Oppdater resultater" i Fasit-fanen for å hente live standings
+Publiser forrige fungerende production deploy fra Netlify. Schema v3 er bakoverkompatibelt, så kode-rollback skal normalt ikke endre Blob-data. Ved datakorrupsjon: stopp redigering og schedule, ta snapshot av nåtilstanden, gjenopprett valgt snapshot via Netlify Blobs API og verifiser `competition-data` før schedule slås på igjen.
