@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { connectLambda, getStore } from "@netlify/blobs";
 import {
   buildLiveFasitFromFeeds,
@@ -8,6 +9,7 @@ import {
   mergeLiveResults,
   recalculateParticipantScores,
 } from "./lib/competition.js";
+import { migrateCompetitionData } from "./lib/competition-data.js";
 
 const BLOB_KEY = "competition-data";
 const STORE_NAME = "vm2026";
@@ -55,7 +57,8 @@ function hasR32Matchups(fasit) {
 }
 
 async function readCompetitionData(store) {
-  return await store.get(BLOB_KEY, { type: "json" }).catch(() => null) || {};
+  const data = await store.get(BLOB_KEY, { type: "json" }).catch(() => null) || {};
+  return migrateCompetitionData(data) || {};
 }
 
 async function updateFromFinishedMatches(store, startedAt) {
@@ -94,6 +97,7 @@ async function updateFromFinishedMatches(store, startedAt) {
   const resultsChanged = liveResultsSignature(mergedFasit) !== liveResultsSignature(currentFasit);
   const nextParticipants = recalculateParticipantScores(latest.participants || [], mergedFasit);
   const complete = worldCupComplete(gamesData);
+  const revision = randomUUID();
 
   await store.setJSON(BLOB_KEY, {
     ...latest,
@@ -107,6 +111,8 @@ async function updateFromFinishedMatches(store, startedAt) {
       finishedGamesSignature: finishedSignature,
       worldCupComplete: complete,
     },
+    schemaVersion: 3,
+    revision,
     updatedAt: startedAt,
   });
 

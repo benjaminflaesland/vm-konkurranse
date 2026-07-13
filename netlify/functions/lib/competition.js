@@ -1,4 +1,4 @@
-const GROUPS = {
+export const GROUPS = {
   A: ["Mexico", "Sør Afrika", "Sør Korea", "Tsjekkia"],
   B: ["Canada", "Bosnia og Herzegovina", "Qatar", "Sveits"],
   C: ["Brasil", "Marokko", "Haiti", "Skottland"],
@@ -12,15 +12,29 @@ const GROUPS = {
   K: ["Portugal", "Kongo", "Uzbekistan", "Colombia"],
   L: ["England", "Kroatia", "Ghana", "Panama"],
 };
-const GROUP_KEYS = Object.keys(GROUPS);
+export const GROUP_KEYS = Object.keys(GROUPS);
 
-const CELLS = {
+export const CELLS = {
+  groups: {
+    A: { first: "B4", second: "B6" }, B: { first: "B9", second: "B11" },
+    C: { first: "B14", second: "B16" }, D: { first: "B19", second: "B21" },
+    E: { first: "B24", second: "B26" }, F: { first: "B29", second: "B31" },
+    G: { first: "B34", second: "B36" }, H: { first: "B39", second: "B41" },
+    I: { first: "B44", second: "B46" }, J: { first: "B49", second: "B51" },
+    K: { first: "B54", second: "B56" }, L: { first: "B59", second: "B61" },
+  },
+  thirds: ["B64", "B66", "B68", "B70", "B72", "B74", "B76", "B78"],
+  thirdLabels: ["ABCDF", "CDFGH", "CEFHI", "EHIJK", "BEFIJ", "AEHIJ", "EFGIJ", "DEIJL"],
   r16: { 73: "E5", 74: "E10", 75: "E15", 76: "E20", 77: "E25", 78: "E30", 79: "E35", 80: "E40", 81: "E45", 82: "E50", 83: "E55", 84: "E60", 85: "E65", 86: "E70", 87: "E75", 88: "E80" },
   r8: { 89: "H25", 90: "H30", 91: "H35", 92: "H40", 93: "H45", 94: "H50", 95: "H55", 96: "H60" },
   kvart: { 97: "K28", 98: "K33", 99: "K38", 100: "K43" },
+  semi: { 101: { win: "N32", lose: "N33" }, 102: { win: "N37", lose: "N38" } },
+  bronse: "R35",
+  finale: "U35",
+  quiz: ["J83", "J84", "J85", "J86", "J87", "J88", "J89", "J90", "J91", "J92"],
 };
 
-const POINTS = {
+export const POINTS = {
   group: 2, third: 2, r16: 3, r8: 3, kvart: 4, semi: 5, bronse: 5, finale: 10, quiz: 1,
   koBonus: 1, koBonusSemi: 2,
 };
@@ -70,7 +84,7 @@ const CANON_LOOKUP = (() => {
   return m;
 })();
 
-function canonicalTeam(name) {
+export function canonicalTeam(name) {
   const clean = String(name || "").replace(/\u00a0/g, " ").trim();
   if (!clean) return "";
   const key = normTeam(clean);
@@ -84,12 +98,17 @@ function canonicalTeam(name) {
   return clean;
 }
 
-function toNorwegian(name) {
+export function isOfficialTeam(name) {
+  const key = normTeam(name);
+  return Boolean(key && CANON_LOOKUP[key]);
+}
+
+export function toNorwegian(name) {
   const cleanName = String(name || "").replace(/\u00a0/g, " ").trim();
   return TEAM_NAME_MAP[cleanName.toLowerCase()] || canonicalTeam(cleanName);
 }
 
-function firstNumber(...values) {
+export function firstNumber(...values) {
   for (const value of values) {
     const n = parseInt(value, 10);
     if (!isNaN(n)) return n;
@@ -97,7 +116,7 @@ function firstNumber(...values) {
   return NaN;
 }
 
-function teamMatch(a, b) {
+export function teamMatch(a, b) {
   if (!a || !b) return false;
   const ca = canonicalTeam(a), cb = canonicalTeam(b);
   if (ca === cb) return true;
@@ -105,7 +124,7 @@ function teamMatch(a, b) {
   return !!na && !!nb && (na === nb || na.includes(nb) || nb.includes(na));
 }
 
-function classifyRound(preds, actuals) {
+export function classifyRound(preds, actuals) {
   const status = preds.map(() => "miss");
   const usedActual = new Set();
   preds.forEach((p, i) => {

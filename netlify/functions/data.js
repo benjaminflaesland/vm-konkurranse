@@ -4,6 +4,7 @@ import { readAdminSession } from "./lib/auth-session.js";
 import {
   editableCompetitionData,
   migrateCompetitionData,
+  serializePublicCompetition,
   validateCompetitionData,
 } from "./lib/competition-data.js";
 
@@ -21,51 +22,6 @@ const response = (statusCode, body) => ({
   headers: HEADERS,
   body: body === undefined ? "" : JSON.stringify(body),
 });
-
-function publicData(data) {
-  const ceremony = data.settings?.ceremony || {};
-  const participants = data.participants || [];
-  const eligible = participants.filter((participant) => !participant.excluded);
-  const bonusOrder = ceremony.phase === "bonus"
-    ? (ceremony.bonusOrder || [...eligible]
-        .sort((a, b) => (a.bonus || 0) - (b.bonus || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-        .map((participant) => participant.id))
-        .filter((id) => eligible.some((participant) => participant.id === id))
-    : [];
-  const revealCount = ceremony.phase === "winner"
-    ? eligible.length
-    : Math.max(0, Math.min(ceremony.bonusRevealed || 0, eligible.length));
-  const revealedBonusIds = bonusOrder.slice(0, revealCount);
-  const revealed = new Set(revealedBonusIds);
-  const revealEverything = ceremony.phase === "winner";
-
-  return {
-    schemaVersion: data.schemaVersion,
-    participants: participants.map((participant) => {
-      const { bonus, picks, ...safeParticipant } = participant;
-      return {
-        ...safeParticipant,
-        ...(revealEverything || revealed.has(participant.id) ? { bonus } : {}),
-        ...(picks ? {
-          picks: revealEverything ? picks : { ...picks, quiz: [] },
-        } : {}),
-      };
-    }),
-    fasit: data.fasit
-      ? { ...data.fasit, quiz: revealEverything ? data.fasit.quiz : Array((data.fasit.quiz || []).length).fill("") }
-      : data.fasit,
-    settings: {
-      ...data.settings,
-      ceremony: {
-        phase: ceremony.phase,
-        step: ceremony.step,
-        bonusRevealed: revealCount,
-        revealedBonusIds,
-      },
-    },
-    liveUpdate: data.liveUpdate,
-  };
-}
 
 async function readStoredData(store) {
   const raw = await store.get(BLOB_KEY, { type: "json" });
@@ -104,7 +60,7 @@ export const handler = async (event) => {
       const current = await readStoredData(store);
       if (!current) return response(404, { error: "Ingen konkurransedata er lagret" });
       return response(200, {
-        data: isAdmin ? editableCompetitionData(current) : publicData(current),
+        data: isAdmin ? editableCompetitionData(current) : serializePublicCompetition(current),
         revision: current.revision || null,
         updatedAt: current.updatedAt || null,
       });
