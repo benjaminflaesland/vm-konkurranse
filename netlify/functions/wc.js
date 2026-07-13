@@ -24,15 +24,12 @@ function cacheIsFresh(entry, endpoint) {
 
 export const handler = async (event) => {
   const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Cache-Control": "s-maxage=60, stale-while-revalidate=30",
   };
   if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers };
+  if (event.httpMethod !== "GET") return response(405, headers, { error: "Metoden støttes ikke" });
 
   const endpoint = event.queryStringParameters?.endpoint;
-  const forceRefresh = event.queryStringParameters?.refresh === "1";
-  const cacheControl = forceRefresh ? "no-store" : "s-maxage=60, stale-while-revalidate=30";
   if (!ALLOWED.includes(endpoint)) {
     return response(400, headers, { error: "Ugyldig endpoint" });
   }
@@ -49,8 +46,8 @@ export const handler = async (event) => {
     console.warn("Live fixture cache unavailable:", error.message);
   }
 
-  if (!forceRefresh && cacheIsFresh(cached, endpoint)) {
-    return response(200, { ...headers, "Cache-Control": cacheControl, "X-WC-Cache": "blob" }, cached.data);
+  if (cacheIsFresh(cached, endpoint)) {
+    return response(200, { ...headers, "X-WC-Cache": "blob" }, cached.data);
   }
 
   try {
@@ -79,13 +76,21 @@ export const handler = async (event) => {
         console.warn("Kunne ikke oppdatere live fixture-cache:", error.message);
       }
     }
-    return response(200, { ...headers, "Cache-Control": cacheControl, "X-WC-Cache": "upstream" }, data);
+    return response(200, { ...headers, "X-WC-Cache": "upstream" }, data);
   } catch (e) {
     // Never leave a new visitor with an empty page if the provider is slow or
     // temporarily unavailable: the last shared payload is still useful.
     if (cached?.data) {
-      return response(200, { ...headers, "Cache-Control": cacheControl, "X-WC-Cache": "stale-blob" }, cached.data);
+      return response(200, { ...headers, "X-WC-Cache": "stale-blob" }, cached.data);
     }
     return response(502, headers, { error: e.message || "Live-kilden er utilgjengelig" });
   }
+};
+
+export const config = {
+  rateLimit: {
+    windowLimit: 60,
+    windowSize: 60,
+    aggregateBy: ["ip", "domain"],
+  },
 };
