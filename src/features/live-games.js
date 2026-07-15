@@ -17,7 +17,8 @@ export const BUILTIN_LIVE_GAMES = [
   { id: "42", home_team_name_en: "Norway", away_team_name_en: "Senegal", home_score: "3", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-23T00:00:00.000Z", type: "group" },
   { id: "62", home_team_name_en: "Norway", away_team_name_en: "France", home_score: "1", away_score: "4", finished: "TRUE", kickoffAt: "2026-06-26T19:00:00.000Z", type: "group" },
   { id: "78", home_team_name_en: "Ivory Coast", away_team_name_en: "Norway", home_score: "1", away_score: "2", finished: "TRUE", kickoffAt: "2026-06-30T16:00:00.000Z", type: "r32" },
-  { id: "91", home_team_name_en: "Brazil", away_team_name_en: "Norway", finished: "FALSE", kickoffAt: "2026-07-05T20:00:00.000Z", type: "r16" },
+  { id: "91", home_team_name_en: "Brazil", away_team_name_en: "Norway", home_score: "1", away_score: "2", finished: "TRUE", kickoffAt: "2026-07-05T20:00:00.000Z", type: "r16" },
+  { id: "99", home_team_name_en: "Norway", away_team_name_en: "England", home_score: "1", away_score: "2", finished: "TRUE", kickoffAt: "2026-07-11T21:00:00.000Z", type: "qf" },
 ];
 
 const DEV_SAMPLE_GAMES = import.meta.env.DEV ? BUILTIN_LIVE_GAMES : null;

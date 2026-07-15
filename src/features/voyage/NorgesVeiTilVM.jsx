@@ -16,6 +16,8 @@ import vmMatchIraq from "../../assets/vm-match-iraq.webp";
 import vmMatchSenegal from "../../assets/vm-match-senegal.webp";
 import vmMatchFrance from "../../assets/vm-match-france.webp";
 import vmMatchIvoryCoast from "../../assets/vm-match-ivory-coast.webp";
+import vmMatchBrazil from "../../assets/vm-match-brazil.webp";
+import vmMatchEngland from "../../assets/vm-match-england.webp";
 
 const NORGE_VM_STOPS = [
   {
@@ -140,6 +142,28 @@ const VM_MATCH_STORIES = {
     focusMobile: "63% 43%",
     focusDesktop: "61% 43%",
     imageHeightMobile: 244,
+  },
+  91: {
+    label: "Historisk åttedelsfinale",
+    title: "Haaland og Nyland senket Brasil",
+    body: "Ørjan Nyland holdt Norge inne i en målløs thriller før innbytterne avgjorde. Andreas Schjelderup serverte Haaland til 1–0 i det 79. minutt og til 2–0 i det 90. Neymars straffe langt inne i overtiden kom for sent.",
+    visual: "Brasil slått",
+    outcome: "For første gang var Norge klart for en VM-kvartfinale.",
+    image: vmMatchBrazil,
+    focus: "50% 50%",
+    focusMobile: "50% 50%",
+    focusDesktop: "50% 50%",
+  },
+  99: {
+    label: "Kvartfinaledramaet",
+    title: "Bellingham avsluttet eventyret",
+    body: "Schjelderups skudd via stolpen ga Norge ledelsen, men Bellingham utlignet før pause. Et norsk mål ble annullert etter VAR, og tre minutter inn i ekstraomgangene satte Bellingham returen som avgjorde kvartfinalen.",
+    visual: "Så nær",
+    outcome: "Norges første VM-kvartfinale endte med et knepent tap etter ekstraomganger.",
+    image: vmMatchEngland,
+    focus: "50% 48%",
+    focusMobile: "50% 48%",
+    focusDesktop: "50% 48%",
   },
 };
 
