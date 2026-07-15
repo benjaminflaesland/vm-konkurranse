@@ -539,14 +539,10 @@ function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames 
   };
   const [finA, finB] = getMatch(104);
   const finale = getFinale(), bronse = getBronse();
-  const fasitFinalWinner = getFasitWinner ? getFasitWinner(104) : null;
   const fasitFinale = getFasitFinale ? getFasitFinale() : null;
   const fasitBronse = getFasitBronse ? getFasitBronse() : null;
   const finaleResult = specialPoint("finale", finale, POINTS.finale, fasitFinale);
   const bronseResult = specialPoint("bronse", bronse, POINTS.bronse, fasitBronse);
-  const [semiA = null, semiB = null] = MATCH_FEEDERS[104] || [];
-  const finAResult = getPointResult ? rowPoint(semiA, finA, POINTS.semi, "winner") : exactPoint(finA, fasitFinalWinner, POINTS.semi);
-  const finBResult = getPointResult ? rowPoint(semiB, finB, POINTS.semi, "winner") : exactPoint(finB, fasitFinalWinner, POINTS.semi);
   const finalTop = H / 2 - CH / 2;
 
   return (
@@ -583,8 +579,8 @@ function renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames 
         <div style={{ position: "absolute", left: centerX, top: finalTop, width: CW, zIndex: 3 }}>
           <div style={{ position: "absolute", left: 0, right: 0, top: flagOnly ? -16 : -22, textAlign: "center" }}><Badge kind="finale">Finale</Badge></div>
           <div style={{ background: "var(--bg4)", borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--accent)", boxShadow: "0 2px 10px rgba(0,0,0,0.12)" }}>
-            {Row(finA, false, finAResult)}
-            {Row(finB, true, finBResult)}
+            {Row(finA, false)}
+            {Row(finB, true)}
           </div>
         </div>
 
@@ -702,14 +698,10 @@ function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 33
 
   const [finA, finB] = getMatch(104);
   const finale = getFinale(), bronse = getBronse();
-  const vFasitFinalWinner = getFasitWinner ? getFasitWinner(104) : null;
   const vFasitFinale = getFasitFinale ? getFasitFinale() : null;
   const vFasitBronse = getFasitBronse ? getFasitBronse() : null;
   const finaleResult = specialPoint("finale", finale, POINTS.finale, vFasitFinale);
   const bronseResult = specialPoint("bronse", bronse, POINTS.bronse, vFasitBronse);
-  const [semiA = null, semiB = null] = MATCH_FEEDERS[104] || [];
-  const finAResult = getPointResult ? rowPoint(semiA, finA, POINTS.semi, "winner") : exactPoint(finA, vFasitFinalWinner, POINTS.semi);
-  const finBResult = getPointResult ? rowPoint(semiB, finB, POINTS.semi, "winner") : exactPoint(finB, vFasitFinalWinner, POINTS.semi);
 
   return (
     <div style={{ overflowX: "auto" }}>
@@ -724,8 +716,8 @@ function renderBracketVertical({ getMatch, getBronse, getFinale, containerW = 33
           <div style={{ textAlign: "center" }}>
             <div style={{ marginBottom: 5 }}><Badge kind="finale">Finale</Badge></div>
             <div style={cardStyle(true)}>
-              {VRow(finA, false, finAResult)}
-              {VRow(finB, true, finBResult)}
+              {VRow(finA, false)}
+              {VRow(finB, true)}
             </div>
           </div>
           <div style={{ textAlign: "center", width: CW }}>
@@ -2567,9 +2559,6 @@ function Hjem({ participants, showBonus, theme }) {
                 <div style={HJ.factLine}>
                   {deepestOptimists.length === 1 ? "Mest optimistisk" : "Mest optimistiske"}: <b>{norwegianNameList(deepestOptimists)}</b> har Norge helt til {nw.deepest.label === "VM-gull" ? "VM-gull" : nw.deepest.label}
                 </div>
-              )}
-              {nw.champions > 0 && (
-                <div style={HJ.factLine}>{nw.champions} {nw.champions === 1 ? "person tror" : "personer tror"} Norge vinner hele VM</div>
               )}
               {nw.advance === 0 && (
                 <div style={HJ.factLine}>Ingen har troa på at Norge går videre fra gruppa …</div>
