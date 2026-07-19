@@ -1,15 +1,18 @@
 import { useEffect } from "react";
 import worldCupPrizeSilhouette from "../../assets/world-cup-prize-silhouette.webp";
+import { CrownIcon } from "../../components/CrownIcon.jsx";
+import { useIsMobile } from "../../hooks/useMediaQuery.js";
 
 const ROUNDS = [
-  { key: "gruppe", label: "Gruppespill" },
-  { key: "r16", label: "16-delsfinaler" },
-  { key: "r8", label: "8-delsfinaler" },
-  { key: "kvart", label: "Kvartfinaler" },
-  { key: "semi", label: "Semifinaler" },
-  { key: "bronse_finale", label: "Bronse & finale" },
+  { key: "gruppe", label: "Gruppespill", short: "Gruppe", afterLabel: "gruppespillet" },
+  { key: "r16", label: "16-delsfinaler", short: "16-del", afterLabel: "16-delsfinalene" },
+  { key: "r8", label: "8-delsfinaler", short: "8-del", afterLabel: "8-delsfinalene" },
+  { key: "kvart", label: "Kvartfinaler", short: "Kvart", afterLabel: "kvartfinalene" },
+  { key: "semi", label: "Semifinaler", short: "Semi", afterLabel: "semifinalene" },
+  { key: "bronse_finale", label: "Bronse & finale", short: "Finaler", afterLabel: "bronsefinalen og finalen" },
 ];
 const BONUS_LABEL = "Bonusspørsmål";
+const BONUS_REVEAL_BATCH_SIZE = 4;
 const DEFAULT_CEREMONY = { phase: "rounds", step: 0, bonusRevealed: 0 };
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
 const isExcludedFromCompetition = (participant) => participant?.excluded === true;
@@ -69,11 +72,44 @@ function LockedCeremony() {
   );
 }
 
-function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit }) {
+function CeremonyIntro({ onStart }) {
+  return (
+    <main className="ceremony-intro" aria-labelledby="ceremony-intro-title">
+      <div className="ceremony-intro-grain" aria-hidden="true" />
+      <div className="ceremony-intro-prize-stage" aria-hidden="true">
+        <div className="ceremony-intro-prize-aura" />
+        <div className="ceremony-intro-prize-floor" />
+        <img className="ceremony-intro-prize" src={worldCupPrizeSilhouette} alt="" decoding="async" />
+      </div>
+
+      <div className="ceremony-intro-inner">
+        <div className="ceremony-intro-copy">
+          <div className="ceremony-intro-kicker"><span /> VM 2026 · Konkurransen er avgjort</div>
+          <h1 id="ceremony-intro-title" className="ceremony-intro-title" aria-label="Hvem tok pokalen?">Hvem tok<br /><em>pokalen?</em></h1>
+          <p className="ceremony-intro-description">
+            Alle kampene er spilt og poengene er telt. Nå avslører vi hvem som vant tippekonkurransen – runde for runde.
+          </p>
+          <div className="ceremony-intro-route" aria-label="Kåringens steg">
+            <span>Gruppespill</span><b>·</b><span>Sluttspill</span><b>·</b><span>Bonus</span><b>·</b><span>Vinner</span>
+          </div>
+          <button type="button" className="ceremony-intro-start" onClick={onStart}>
+            Start kåringen <span aria-hidden="true">›</span>
+          </button>
+          <p className="ceremony-intro-hint">Du kan lukke vinduet og fortsette fra «Kåring» senere.</p>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function Present({ participants, ceremony, setCeremony, isAdmin, isLive, selfGuided = false, standalone = false, onExit }) {
   const competingParticipants = participants.filter((p) => !isExcludedFromCompetition(p));
   const normalizedCeremony = normalizeCeremony(ceremony);
   const { phase, step } = normalizedCeremony;
   const bonusRevealed = Math.min(normalizedCeremony.bonusRevealed, competingParticipants.length);
+  const bonusRemaining = Math.max(0, competingParticipants.length - bonusRevealed);
+  const nextBonusRevealCount = Math.min(BONUS_REVEAL_BATCH_SIZE, bonusRemaining);
+  const canControl = isAdmin || selfGuided;
 
   const finalBase = competingParticipants.map((p) => ({
     ...p, base: ROUNDS.reduce((s, r) => s + (p.scores[r.key] || 0), 0),
@@ -85,7 +121,7 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
   const publicRevealedOrder = normalizedCeremony.revealedBonusIds
     ?.map((id) => participantById.get(id))
     .filter(Boolean) || [];
-  const bonusOrder = isAdmin
+  const bonusOrder = canControl
     ? (syncedBonusOrder?.length === competingParticipants.length
         ? syncedBonusOrder
         : [...finalBase].sort((a, b) => (a.bonus || 0) - (b.bonus || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)))
@@ -103,52 +139,55 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
           .map((participant) => participant.id),
       });
     } else if (phase === "bonus") {
-      if (bonusRevealed < competingParticipants.length) setCeremony({ ...normalizedCeremony, bonusRevealed: bonusRevealed + 1 });
+      if (bonusRevealed < competingParticipants.length) {
+        setCeremony({ ...normalizedCeremony, bonusRevealed: bonusRevealed + nextBonusRevealCount });
+      }
       else setCeremony({ ...normalizedCeremony, phase: "winner", bonusRevealed: competingParticipants.length });
     }
   };
   const prev = () => {
     if (phase === "winner") setCeremony({ ...normalizedCeremony, phase: "bonus", bonusRevealed: competingParticipants.length });
     else if (phase === "bonus") {
-      if (bonusRevealed > 0) setCeremony({ ...normalizedCeremony, bonusRevealed: bonusRevealed - 1 });
+      if (bonusRevealed > 0) setCeremony({ ...normalizedCeremony, bonusRevealed: Math.max(0, bonusRevealed - BONUS_REVEAL_BATCH_SIZE) });
       else setCeremony({ ...normalizedCeremony, phase: "rounds", step: ROUNDS.length - 1 });
     } else if (step > 0) setCeremony({ ...normalizedCeremony, step: step - 1 });
   };
 
   useEffect(() => {
     const onKey = (e) => {
-      if (isAdmin && (e.key === "ArrowRight" || e.key === " ")) { e.preventDefault(); next(); }
-      else if (isAdmin && e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+      if (canControl && (e.key === "ArrowRight" || e.key === " ")) { e.preventDefault(); next(); }
+      else if (canControl && e.key === "ArrowLeft") { e.preventDefault(); prev(); }
       else if (e.key === "Escape") onExit();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   // next/prev always use the same ceremony snapshot represented by these values.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, phase, step, bonusRevealed, competingParticipants.length, onExit]);
+  }, [canControl, phase, step, bonusRevealed, competingParticipants.length, onExit]);
 
   const phaseLabel = phase === "rounds" ? ROUNDS[step].label
     : phase === "bonus" ? `${BONUS_LABEL} (${bonusRevealed}/${competingParticipants.length})`
     : "Vinner!";
 
   return (
-    <div style={S.presentWrap}>
+    <div className={`ceremony-present${standalone ? " ceremony-present--standalone" : ""}`} style={S.presentWrap}>
       {phase === "rounds" && <BumpChart participants={competingParticipants} step={step} />}
       {phase === "bonus" && (
         <BonusReveal finalBase={finalBase} bonusOrder={bonusOrder} revealed={bonusRevealed} />
       )}
       {phase === "winner" && <WinnerScreen finalBase={finalBase} />}
 
-      {isAdmin ? (
+      {canControl ? (
         <div style={S.presentNav}>
           <button onClick={prev} disabled={phase === "rounds" && step === 0} style={S.navBtn}>‹ Tilbake</button>
           <div style={S.phaseLabel}>
-            {!isLive && <span style={S.previewLabel}>Forhåndsvisning</span>}
-            {phaseLabel}
+            {isAdmin && !isLive && <span style={S.previewLabel}>Forhåndsvisning</span>}
+            {phase !== "rounds" ? phaseLabel : null}
           </div>
           <button onClick={next} disabled={phase === "winner"} style={{ ...S.navBtn, ...S.navBtnPrimary }}>
             {phase === "rounds" && step === ROUNDS.length - 1 ? "Bonusrunde ›"
               : phase === "bonus" && bonusRevealed === competingParticipants.length ? "Kår vinner ›"
+              : phase === "bonus" ? `Vis neste ${nextBonusRevealCount} ›`
               : "Neste ›"}
           </button>
         </div>
@@ -165,16 +204,19 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, onExit 
 // BUMP CHART
 // ─────────────────────────────────────────────
 function BumpChart({ participants, step }) {
+  const isMobile = useIsMobile(700);
   const n = participants.length;
   const atRounds = ROUNDS.map((_, i) => rankingAt(participants, i));
   const rankOf = (pid, ri) => atRounds[ri].findIndex((p) => p.id === pid);
 
   const rowH = Math.min(72, Math.max(40, 560 / Math.max(n, 1)));
-  const W = 1000;
+  const W = isMobile ? 520 : 1000;
   // Reserve space after the active round for the participant labels. Keeping each
   // label beside its current endpoint makes the line-to-name mapping unambiguous
   // after positions swap between rounds.
-  const padL = 32, padR = 200, padT = 58, padB = 20;
+  const padL = isMobile ? 44 : 32;
+  const padR = isMobile ? 142 : 220;
+  const padT = 58, padB = 20;
   const chartH = Math.max(rowH * n, 300);
   const H = padT + chartH + padB;
   const visible = step + 1;
@@ -197,8 +239,12 @@ function BumpChart({ participants, step }) {
   const finalRanking = atRounds[step];
 
   return (
-    <div style={{ ...S.chartCard, padding: "16px 12px" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+    <div className="ceremony-chart-card" style={{ ...S.chartCard, padding: "16px 12px" }}>
+      <header className="ceremony-chart-heading" aria-live="polite">
+        <span>Stillingen etter</span>
+        <h2>{ROUNDS[step].afterLabel}</h2>
+      </header>
+      <svg className="ceremony-chart-svg" viewBox={`0 0 ${W} ${H}`} style={{ flex: "1 1 auto", minHeight: 0, width: "100%", height: "100%", display: "block" }}>
 
         {Array.from({ length: n }).map((_, rank) => (
           <line key={rank}
@@ -248,12 +294,21 @@ function BumpChart({ participants, step }) {
           const rankNow = rankOf(p.id, lastRoundIdx);
           const y = yFor(rankNow);
           const overallRank = finalRanking.findIndex((r) => r.id === p.id);
+          const scoreNow = cumulative(p, lastRoundIdx);
+          const isLeader = overallRank === 0;
+          const crownSize = isMobile ? 15 : 16;
+          const labelX = xFor(lastRoundIdx) + 16;
           return (
             <g key={p.id} style={{ transition: "all .7s ease" }}>
-              <text x={xFor(lastRoundIdx) + 16} y={y + 5} style={{ fill: "var(--text1)" }} fontSize="14"
+              {isLeader && (
+                <CrownIcon className="ceremony-leader-crown" size={crownSize} x={labelX} y={y - crownSize / 2 - 1} />
+              )}
+              <text x={labelX + (isLeader ? crownSize + 4 : 0)} y={y + 5} style={{ fill: "var(--text1)" }} fontSize={isMobile ? 15 : 14}
                 fontWeight="700" fontFamily="'Inter', sans-serif">
                 {firstName(p.name)}
-                <tspan style={{ fill: "var(--text3)" }} fontSize="11" fontWeight="600" dx="5">#{overallRank + 1}</tspan>
+                <tspan style={{ fill: "var(--text3)" }} fontSize={isMobile ? 12 : 11} fontWeight="600" dx="5">
+                  #{overallRank + 1} · {scoreNow} p
+                </tspan>
               </text>
             </g>
           );
@@ -313,6 +368,7 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
 // WINNER
 // ─────────────────────────────────────────────
 function WinnerScreen({ finalBase }) {
+  const isMobile = useIsMobile(700);
   const sorted = [...finalBase]
     .map((p) => ({ ...p, total: p.base + (p.bonus || 0) }))
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
@@ -321,13 +377,16 @@ function WinnerScreen({ finalBase }) {
   return (
     <div style={S.winnerCard}>
       <Confetti />
-      <div style={S.podiumWrap}>
-        {second && <Podium place={2} p={second} height={140} delay={0.2} />}
-        {w && <Podium place={1} p={w} height={200} delay={0} winner />}
-        {third && <Podium place={3} p={third} height={100} delay={0.4} />}
+      <div style={{ ...S.podiumWrap, ...(isMobile ? { gap: 8, minHeight: 220, marginBottom: 18 } : {}) }}>
+        {second && <Podium place={2} p={second} height={isMobile ? 105 : 140} delay={0.2} compact={isMobile} />}
+        {w && <Podium place={1} p={w} height={isMobile ? 150 : 200} delay={0} winner compact={isMobile} />}
+        {third && <Podium place={3} p={third} height={isMobile ? 78 : 100} delay={0.4} compact={isMobile} />}
       </div>
-      <div style={S.winnerTitle}>{firstName(w?.name)}</div>
-      <div style={S.winnerSub}>Avdelingens fremste fotballekspert · {w?.total} poeng</div>
+      <div style={{ ...S.winnerTitle, ...(isMobile ? { fontSize: 25 } : {}) }}>
+        <CrownIcon className="ceremony-winner-crown" size={isMobile ? 22 : 26} />
+        {firstName(w?.name)}
+      </div>
+      <div style={{ ...S.winnerSub, textAlign: "center" }}>Avdelingens fremste fotballekspert · {w?.total} poeng</div>
       {sorted.length > 3 && (
         <ol style={S.restList}>
           {sorted.slice(3).map((p, i) => (
@@ -344,19 +403,19 @@ function WinnerScreen({ finalBase }) {
   );
 }
 
-function Podium({ place, p, height, delay, winner }) {
+function Podium({ place, p, height, delay, winner, compact = false }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animationDelay: `${delay}s` }}
       className="podium-rise">
       <div style={{ width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6,
         background: place === 1 ? "var(--accent)" : "var(--bg4)", color: place === 1 ? "var(--accent-fg)" : "var(--text2)",
         fontWeight: 800, fontSize: 16 }}>{place}</div>
-      <div style={{ fontWeight: 800, fontSize: winner ? 21 : 16, color: "var(--text1)", marginBottom: 2, textAlign: "center" }}>
+      <div style={{ fontWeight: 800, fontSize: compact ? (winner ? 17 : 14) : (winner ? 21 : 16), color: "var(--text1)", marginBottom: 2, textAlign: "center" }}>
         {firstName(p.name)}
       </div>
       <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>{p.total} p</div>
       <div style={{
-        width: 116, height, borderRadius: "10px 10px 0 0",
+        width: compact ? 88 : 116, height, borderRadius: "10px 10px 0 0",
         background: `linear-gradient(180deg, ${p.color}, ${p.color}99)`,
         display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 8,
         boxShadow: winner ? `0 0 40px ${p.color}66` : "none",
@@ -386,9 +445,9 @@ function Confetti() {
 
 const S = {
   dot: { display: "inline-block", width: 10, height: 10, borderRadius: "50%", marginRight: 9, verticalAlign: "middle" },
-  presentWrap: { flex: 1, display: "flex", flexDirection: "column", padding: 16, maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
-  chartCard: { flex: 1, background: "var(--bg3)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", justifyContent: "center" },
-  presentNav: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 12 },
+  presentWrap: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: 16, maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
+  chartCard: { flex: 1, minHeight: 0, background: "var(--bg3)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "hidden" },
+  presentNav: { flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 12 },
   phaseLabel: { fontSize: 17, color: "var(--text1)", fontWeight: 900, textAlign: "center", display: "flex", alignItems: "center", gap: 8 },
   previewLabel: { display: "inline-block", padding: "3px 7px", borderRadius: 6, color: "#D8B15A", background: "#D8B15A1A", fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" },
   publicCeremonyStatus: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 18, color: "var(--text3)", fontSize: 13, fontWeight: 700 },
@@ -404,7 +463,7 @@ const S = {
   bonusScore: { fontSize: 20, fontWeight: 900, color: "var(--text1)", minWidth: 44, textAlign: "right" },
   winnerCard: { flex: 1, background: "var(--bg3)", borderRadius: 20, padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" },
   podiumWrap: { display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 16, marginBottom: 28, minHeight: 270 },
-  winnerTitle: { fontSize: 30, fontWeight: 900, color: "var(--text1)", textAlign: "center" },
+  winnerTitle: { display: "flex", alignItems: "center", justifyContent: "center", gap: 9, fontSize: 30, fontWeight: 900, color: "var(--text1)", textAlign: "center" },
   winnerSub: { fontSize: 14, color: "var(--text3)", marginTop: 6 },
   restList: { listStyle: "none", margin: "20px 0 0", padding: 0, width: "100%", maxWidth: 440 },
   restItem: { display: "flex", alignItems: "center", gap: 8, padding: "11px 0", fontSize: 15, borderBottom: "1px solid var(--border)" },
@@ -412,6 +471,8 @@ const S = {
   confetti: { position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" },
 };
 
-export default function Ceremony({ unlocked, ...props }) {
-  return unlocked ? <Present {...props} /> : <LockedCeremony />;
+export default function Ceremony({ unlocked, showIntro = false, onStart, ...props }) {
+  if (!unlocked) return <LockedCeremony />;
+  if (showIntro) return <CeremonyIntro onStart={onStart} />;
+  return <Present {...props} />;
 }

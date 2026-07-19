@@ -1,29 +1,40 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 export function migrateCompetitionData(value) {
   if (!isObject(value)) return value;
+  const sourceVersion = Number(value.schemaVersion) || 0;
   const participants = Array.isArray(value.participants)
     ? value.participants.map((participant) => {
         if (!isObject(participant)) return participant;
-        if (typeof participant.excluded === "boolean") return participant;
         const firstName = String(participant.name || "").trim().split(/\s+/)[0].toLowerCase();
-        return { ...participant, excluded: firstName === "benjamin" };
+        if (sourceVersion < 4 && firstName === "benjamin") {
+          return { ...participant, excluded: false };
+        }
+        if (typeof participant.excluded === "boolean") return participant;
+        return { ...participant, excluded: false };
       })
     : value.participants;
   const currentCeremony = value.settings?.ceremony;
   const eligible = Array.isArray(participants) ? participants.filter((participant) => !participant?.excluded) : [];
+  const sortedEligibleIds = [...eligible]
+    .sort((a, b) => (a.bonus || 0) - (b.bonus || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    .map((participant) => participant.id);
+  const existingBonusOrder = Array.isArray(currentCeremony?.bonusOrder)
+    ? currentCeremony.bonusOrder.filter((id) => eligible.some((participant) => participant.id === id))
+    : [];
+  const missingEligibleIds = sortedEligibleIds.filter((id) => !existingBonusOrder.includes(id));
   const needsFrozenBonusOrder = ["bonus", "winner"].includes(currentCeremony?.phase)
-    && !Array.isArray(currentCeremony?.bonusOrder);
+    && (!Array.isArray(currentCeremony?.bonusOrder) || (sourceVersion < 4 && missingEligibleIds.length > 0));
   const settings = needsFrozenBonusOrder
     ? {
         ...value.settings,
         ceremony: {
           ...currentCeremony,
-          bonusOrder: [...eligible]
-            .sort((a, b) => (a.bonus || 0) - (b.bonus || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-            .map((participant) => participant.id),
+          bonusOrder: Array.isArray(currentCeremony?.bonusOrder)
+            ? [...existingBonusOrder, ...missingEligibleIds]
+            : sortedEligibleIds,
         },
       }
     : value.settings;
@@ -59,6 +70,7 @@ export function editableCompetitionData(value) {
 
 export function serializePublicCompetition(data) {
   const ceremony = data.settings?.ceremony || {};
+  const ceremonyPublished = Boolean(data.settings?.ceremonyUnlocked);
   const participants = data.participants || [];
   const eligible = participants.filter((participant) => !participant.excluded);
   const bonusOrder = ceremony.phase === "bonus"
@@ -67,12 +79,12 @@ export function serializePublicCompetition(data) {
         .map((participant) => participant.id))
         .filter((id) => eligible.some((participant) => participant.id === id))
     : [];
-  const revealCount = ceremony.phase === "winner"
+  const revealEverything = ceremonyPublished || ceremony.phase === "winner";
+  const revealCount = revealEverything
     ? eligible.length
     : Math.max(0, Math.min(ceremony.bonusRevealed || 0, eligible.length));
   const revealedBonusIds = bonusOrder.slice(0, revealCount);
   const revealed = new Set(revealedBonusIds);
-  const revealEverything = ceremony.phase === "winner";
   const publicPicks = (picks) => picks ? {
     groups: picks.groups,
     thirds: picks.thirds,
@@ -109,7 +121,10 @@ export function serializePublicCompetition(data) {
     }),
     fasit: publicFasit,
     settings: {
-      ceremonyUnlocked: Boolean(data.settings?.ceremonyUnlocked),
+      ceremonyUnlocked: ceremonyPublished,
+      ceremonyReleaseId: typeof data.settings?.ceremonyReleaseId === "string"
+        ? data.settings.ceremonyReleaseId
+        : null,
       ceremony: {
         phase: ceremony.phase,
         step: ceremony.step,

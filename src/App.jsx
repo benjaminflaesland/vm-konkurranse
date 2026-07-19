@@ -16,6 +16,7 @@ import {
   toNorwegian,
 } from "../shared/competition.js";
 import { Flag, codeOf } from "./components/Flag.jsx";
+import { CrownIcon } from "./components/CrownIcon.jsx";
 import {
   formatCountdown,
   pickNextNorwayGame,
@@ -128,6 +129,38 @@ const QUIZ_QUESTIONS = [
   "Blir Ronaldo toppscorer for Portugal? (Ja/Nei)",
 ];
 
+function quizResultItems(picks, fasit) {
+  return QUIZ_QUESTIONS.map((question, index) => {
+    const pick = picks?.quiz?.[index] || "";
+    const actual = fasit?.quiz?.[index] || "";
+    if (!pick && !actual) return null;
+
+    let status = "pending";
+    if (actual) {
+      if (index === 3) {
+        const actualGoals = parseInt(String(actual).replace(/\D/g, ""), 10);
+        const pickedGoals = parseInt(String(pick).replace(/\D/g, ""), 10);
+        status = Number.isFinite(actualGoals) && Number.isFinite(pickedGoals) && Math.abs(actualGoals - pickedGoals) <= 5
+          ? "hit"
+          : "miss";
+      } else {
+        status = pick && norm(actual) === norm(pick) ? "hit" : "miss";
+      }
+    }
+
+    return {
+      index,
+      label: `${index + 1}. ${question}`,
+      pick,
+      actual,
+      status,
+      points: status === "hit" ? POINTS.quiz : 0,
+      max: POINTS.quiz,
+      team: false,
+    };
+  }).filter(Boolean);
+}
+
 // ── Poengsystem (fra Excel-malen) ──
 const BRACKET_HIT_COLOR = "#16a34a";
 const BRACKET_BONUS_COLOR = "#E0A106";
@@ -170,6 +203,7 @@ const LAST_PUBLIC_MODE_KEY = "vm2026_last_public_mode";
 const SUPPORTER_ROW_ENDPOINT = "/.netlify/functions/supporter-row";
 const SUPPORTER_ROW_DEV_KEY = "vm2026_supporter_rows_dev";
 const SUPPORTER_COUNT_CACHE_KEY = "vm2026_supporter_count_cache";
+const CEREMONY_DISMISSED_PREFIX = "vm2026_ceremony_dismissed_";
 
 // Last total we showed, kept so a refresh or tab switch can paint it immediately
 // instead of dropping to a briefly-stale server read and climbing back up.
@@ -183,7 +217,7 @@ function readCachedSupporterCount() {
 }
 const PUBLIC_MODES = new Set(["hjem", "stilling", "fasit-view", "vei-vm", "present"]);
 const DEFAULT_CEREMONY = { phase: "rounds", step: 0, bonusRevealed: 0 };
-const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremony: DEFAULT_CEREMONY };
+const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremonyReleaseId: null, ceremony: DEFAULT_CEREMONY };
 
 function normalizeCeremony(value) {
   const phase = ["rounds", "bonus", "winner"].includes(value?.phase) ? value.phase : DEFAULT_CEREMONY.phase;
@@ -202,6 +236,10 @@ function normalizeSettings(value) {
     ...value,
     ceremony: normalizeCeremony(value?.ceremony),
   };
+}
+
+function ceremonyDismissedKey(releaseId) {
+  return `${CEREMONY_DISMISSED_PREFIX}${releaseId || "legacy"}`;
 }
 
 const DEMO_DATA = import.meta.env.DEV ? (() => {
@@ -408,17 +446,6 @@ function TrophyIcon({ size = 30 }) {
       <path d="M6 3.5h12V8a6 6 0 0 1-12 0V3.5Z" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
       <path d="M6 5H4a2 2 0 0 0 0 4h2.3M18 5h2a2 2 0 0 1 0 4h-2.3" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" />
       <path d="M12 14v3.2M8.5 20.5h7M9 20.5c.2-1.7 1.1-2.7 3-3.3 1.9.6 2.8 1.6 3 3.3" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-// Flat gold crown (solid body + detached base bar) marking the current leader.
-function CrownIcon({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-      <path d="M4 7 L8.6 10.8 L12 4.6 L15.4 10.8 L20 7 L20 15 L4 15 Z"
-        fill="#EAB948" stroke="#EAB948" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" />
-      <rect x="5" y="17.3" width="14" height="2.9" rx="1.45" fill="#EAB948" />
     </svg>
   );
 }
@@ -890,23 +917,9 @@ function pickResults(picks, fasit) {
   if (picks.finale || fasit.finale) bf.push(mk("Finale · mester", picks.finale, fasit.finale, POINTS.finale));
   push("bf", "Bronse & finale", bf);
 
-  // VM-quiz: spm 4 (idx 3) har ±5-toleranse
-  const quizItems = [];
-  QUIZ_QUESTIONS.forEach((q, i) => {
-    const f = fasit.quiz?.[i];
-    if (!f) return;
-    const p = picks.quiz?.[i];
-    let correct;
-    if (i === 3) {
-      const fn = parseInt(String(f).replace(/\D/g, ""), 10);
-      const pn = parseInt(String(p).replace(/\D/g, ""), 10);
-      correct = !isNaN(fn) && !isNaN(pn) && Math.abs(fn - pn) <= 5;
-    } else {
-      correct = !!p && norm(f) === norm(p);
-    }
-    quizItems.push({ label: `${i + 1}. ${q}`, pick: p || "", actual: f, status: correct ? "hit" : "miss", points: correct ? POINTS.quiz : 0, max: POINTS.quiz, team: false });
-  });
-  push("quiz", "VM-quiz", quizItems);
+  // VM-quiz: spm. 4 har ±5-toleranse. Ventende spørsmål skal ikke telle
+  // før fasiten er fylt inn.
+  push("quiz", "VM-quiz", quizResultItems(picks, fasit).filter((item) => item.actual));
 
   // Vis lagnavn kanonisk (offisielt navn + flagg uansett skrivemåte i Excel).
   for (const sec of sections) {
@@ -955,6 +968,9 @@ export default function App() {
   const [movementSnapshot, setMovementSnapshot] = useState(null);
   const [settings, setSettings] = useState(() => normalizeSettings());
   const [adminPreviewCeremony, setAdminPreviewCeremony] = useState(() => normalizeCeremony());
+  const [viewerCeremony, setViewerCeremony] = useState(() => normalizeCeremony());
+  const [showCeremonyModal, setShowCeremonyModal] = useState(false);
+  const [showViewerCeremonyIntro, setShowViewerCeremonyIntro] = useState(true);
   const [mode, setMode] = useState(() => {
     try {
       const saved = localStorage.getItem(LAST_PUBLIC_MODE_KEY);
@@ -1160,7 +1176,7 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", warnIfDirty);
   }, []);
 
-  // Public viewers follow the admin-controlled ceremony without needing to reload.
+  // Public viewers pick up admin publication changes without needing to reload.
   useEffect(() => {
     if (!loaded || sessionState !== "public" || DEMO_DATA) return;
     let active = true;
@@ -1173,6 +1189,21 @@ export default function App() {
     const interval = window.setInterval(refresh, 30000);
     return () => { active = false; window.clearInterval(interval); };
   }, [loaded, sessionState, applyDataEnvelope, competitionData]);
+
+  // Once admin publishes a ceremony, each public device gets its own local
+  // walkthrough. Dismissing it is remembered only for that specific release.
+  useEffect(() => {
+    if (!loaded || isAdmin || !settings.ceremonyUnlocked) {
+      if (!settings.ceremonyUnlocked) setShowCeremonyModal(false);
+      return;
+    }
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(ceremonyDismissedKey(settings.ceremonyReleaseId)) === "1"; } catch { /* Popupen fungerer også uten localStorage. */ }
+    if (dismissed) return;
+    setViewerCeremony(normalizeCeremony());
+    setShowViewerCeremonyIntro(true);
+    setShowCeremonyModal(true);
+  }, [loaded, isAdmin, settings.ceremonyUnlocked, settings.ceremonyReleaseId]);
 
   const handleLogoClock = () => {
     clearTimeout(logoClickTimer.current);
@@ -1267,12 +1298,24 @@ export default function App() {
 
   const togglePublicCeremony = () => {
     if (settings.ceremonyUnlocked) {
-      setSettings((current) => ({ ...normalizeSettings(current), ceremonyUnlocked: false }));
+      const ceremony = normalizeCeremony();
+      setAdminPreviewCeremony(ceremony);
+      setSettings((current) => ({ ...normalizeSettings(current), ceremonyUnlocked: false, ceremony }));
       return;
     }
     const ceremony = normalizeCeremony();
     setAdminPreviewCeremony(ceremony);
-    setSettings((current) => ({ ...normalizeSettings(current), ceremonyUnlocked: true, ceremony }));
+    setSettings((current) => ({
+      ...normalizeSettings(current),
+      ceremonyUnlocked: true,
+      ceremonyReleaseId: `${Date.now()}`,
+      ceremony,
+    }));
+  };
+
+  const dismissPublicCeremony = () => {
+    try { localStorage.setItem(ceremonyDismissedKey(settings.ceremonyReleaseId), "1"); } catch { /* Lukkeknappen fungerer også uten localStorage. */ }
+    setShowCeremonyModal(false);
   };
 
   if (!loaded) {
@@ -1286,8 +1329,12 @@ export default function App() {
   const publicTabs = [["hjem", "Hjem"], ["stilling", "Stilling"], ["fasit-view", "Resultat"], ["vei-vm", "Veien til VM"], ["present", "Kåring"]];
   const adminTabs = [["deltakere", "Deltakere"], ["fasit", "Rediger resultat"]];
   const tabs = isAdmin ? [...publicTabs, ...adminTabs] : publicTabs;
-  const bonusPublished = settings.ceremony.phase === "winner";
-  const activeCeremony = settings.ceremonyUnlocked ? settings.ceremony : adminPreviewCeremony;
+  const bonusPublished = settings.ceremonyUnlocked;
+  const publicSelfGuided = !isAdmin && settings.ceremonyUnlocked;
+  const activeCeremony = publicSelfGuided
+    ? viewerCeremony
+    : settings.ceremonyUnlocked ? settings.ceremony : adminPreviewCeremony;
+  const updateActiveCeremony = publicSelfGuided ? setViewerCeremony : setCeremony;
 
   return (
     <div style={S.app} data-theme={theme}>
@@ -1310,6 +1357,27 @@ export default function App() {
               <button onClick={() => { setShowPasswordModal(false); setPasswordInput(""); setPasswordError(""); }}
                 style={{ ...S.addBtn }}>Avbryt</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showCeremonyModal && !isAdmin && settings.ceremonyUnlocked && (
+        <div role="dialog" aria-modal="true" aria-label="VM-kåring" style={S.ceremonyModalOverlay}>
+          <div style={S.ceremonyModal}>
+            <button type="button" aria-label="Lukk kåringen" onClick={dismissPublicCeremony} style={S.ceremonyModalClose}>×</button>
+            <React.Suspense fallback={<div style={S.adminWrap}>Laster kåringen …</div>}>
+              <Ceremony
+                unlocked
+                participants={participants}
+                ceremony={viewerCeremony}
+                setCeremony={setViewerCeremony}
+                isAdmin={false}
+                isLive
+                selfGuided
+                showIntro={showViewerCeremonyIntro}
+                onStart={() => setShowViewerCeremonyIntro(false)}
+                onExit={dismissPublicCeremony} />
+            </React.Suspense>
           </div>
         </div>
       )}
@@ -1354,7 +1422,7 @@ export default function App() {
                 aria-pressed={settings.ceremonyUnlocked}
                 onClick={togglePublicCeremony}
                 style={{ ...S.ceremonyToggle, ...(settings.ceremonyUnlocked ? S.ceremonyToggleOpen : {}) }}>
-                {settings.ceremonyUnlocked ? "Lås offentlig kåring" : "Start offentlig kåring"}
+                {settings.ceremonyUnlocked ? "Trekk tilbake kåring" : "Gjør kåring tilgjengelig"}
               </button>
             )}
             <button type="button" aria-pressed={theme === "light"} onClick={() => {
@@ -1412,9 +1480,11 @@ export default function App() {
             unlocked={isAdmin || settings.ceremonyUnlocked}
             participants={participants}
             ceremony={activeCeremony}
-            setCeremony={setCeremony}
+            setCeremony={updateActiveCeremony}
             isAdmin={isAdmin}
             isLive={settings.ceremonyUnlocked}
+            selfGuided={publicSelfGuided}
+            standalone
             onExit={() => setMode("stilling")} />
         </React.Suspense>
       )}
@@ -1702,18 +1772,9 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
                               })()}
 
                               {/* Quiz */}
-                              {p.picks.quiz?.some(Boolean) && (
+                              {(p.picks.quiz?.some(Boolean) || fasit.quiz?.some(Boolean)) && (
                                 <div style={{ padding: "14px 16px" }}>
-                                  <div style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>Quiz</div>
-                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 3 }}>
-                                    {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
-                                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", background: "var(--bg4)", borderRadius: 7 }}>
-                                        <span style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, flexShrink: 0, minWidth: 14 }}>{i+1}</span>
-                                        <span style={{ color: "var(--text3)", flex: 1, fontSize: 12 }}>{q}</span>
-                                        <span style={{ color: "var(--accent)", fontWeight: 700, whiteSpace: "nowrap", fontSize: 12 }}>{p.picks.quiz[i]}</span>
-                                      </div>
-                                    ) : null)}
-                                  </div>
+                                  <QuizParticipantResults picks={p.picks} fasit={fasit} showHeader />
                                 </div>
                               )}
 
@@ -1781,6 +1842,61 @@ function PredictionBracket({ picks, fasit }) {
         ? <VerticalBracket getMatch={getMatch} getBronse={getBronse} getFinale={getFinale} getFasitWinner={getFasitWinner} getFasitFinale={getFasitFinale} getFasitBronse={getFasitBronse} getPointResult={getPointResult} />
         : renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames: true, getFasitWinner, getFasitFinale, getFasitBronse, getPointResult })}
     </section>
+  );
+}
+
+function QuizParticipantResults({ picks, fasit, items: providedItems, showHeader = false }) {
+  const items = providedItems || quizResultItems(picks, fasit);
+  if (!items.length) return null;
+
+  const decided = items.filter((item) => item.status !== "pending");
+  const hits = decided.filter((item) => item.status === "hit").length;
+  const points = decided.reduce((sum, item) => sum + item.points, 0);
+
+  return (
+    <div>
+      {showHeader && (
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
+          <span style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2 }}>VM-quiz</span>
+          <span style={{ color: "var(--text3)", fontSize: 11.5, whiteSpace: "nowrap" }}>
+            {decided.length ? <><b style={{ color: "var(--text1)" }}>{hits}/{decided.length}</b> rett · <b style={{ color: "var(--accent)" }}>{points} p</b></> : "Venter på fasit"}
+          </span>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 6 }}>
+        {items.map((item) => (
+          <div key={item.index} style={{ padding: "8px 10px", background: "var(--bg4)", borderRadius: 8, borderLeft: `3px solid ${STATUS_COLOR[item.status]}` }}>
+            <div style={{ color: "var(--text3)", fontSize: 11.5, lineHeight: 1.35, marginBottom: 6 }}>{item.label}</div>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "5px 10px", fontSize: 11.5 }}>
+              <span style={{ color: "var(--text4)" }}>Tips: <b style={{ color: "var(--text1)" }}>{item.pick || "—"}</b></span>
+              <span style={{ color: "var(--text4)" }}>Fasit: <b style={{ color: "var(--text2)" }}>{item.actual || "Venter"}</b></span>
+              <span style={{ marginLeft: "auto", color: STATUS_COLOR[item.status], fontWeight: 800, whiteSpace: "nowrap" }}>
+                {item.status === "hit" ? `Rett · +${item.points} p` : item.status === "miss" ? "Bom" : "Ikke avgjort"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuizAnswerKey({ fasit }) {
+  const items = quizResultItems(null, fasit).filter((item) => item.actual);
+  if (!items.length) return null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 7 }}>
+      {items.map((item) => (
+        <div key={item.index} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 9 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, flexShrink: 0, borderRadius: 7, background: "color-mix(in srgb, var(--accent) 12%, var(--bg4))", color: "var(--accent)", fontSize: 11, fontWeight: 900 }}>
+            {item.index + 1}
+          </span>
+          <span style={{ flex: 1, minWidth: 0, color: "var(--text3)", fontSize: 12.5, lineHeight: 1.4 }}>{QUIZ_QUESTIONS[item.index]}</span>
+          <span style={{ color: "var(--accent)", fontSize: 13, fontWeight: 800, textAlign: "right", flexShrink: 0 }}>{item.actual}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1853,19 +1969,7 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
             </span>
           </div>
           {sec.key === "quiz" ? (
-            <div>
-              {sec.items.map((it, j) => (
-                <div key={j} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 0",
-                  borderBottom: j < sec.items.length - 1 ? "1px solid var(--bg2)" : "none" }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--text3)", lineHeight: 1.4 }}>{it.label}</span>
-                  <span style={{ fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap", flexShrink: 0,
-                    color: it.status === "hit" ? "var(--accent)" : "var(--text2)" }}>{it.pick || "—"}</span>
-                  {it.status === "hit"
-                    ? <span style={{ color: "var(--accent)", fontWeight: 800, fontSize: 11.5, flexShrink: 0 }}>+{it.points}</span>
-                    : <span style={{ color: "var(--text4)", fontSize: 11, flexShrink: 0, whiteSpace: "nowrap" }}>→ {it.actual}</span>}
-                </div>
-              ))}
-            </div>
+            <QuizParticipantResults picks={picks} fasit={fasit} items={sec.items} />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: 6 }}>
               {sec.items.map((it, j) => <Chip key={j} it={it} />)}
@@ -2675,19 +2779,11 @@ function FasitView({ fasit, showBonus, theme }) {
 
       {showBonus && fasit.quiz.some(Boolean) && (
         <div style={secStyle}>
-          <div style={S.fasitSectionTitle}>VM-quiz resultat</div>
-          {QUIZ_QUESTIONS.map((q, i) =>
-            fasit.quiz[i] ? (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 9 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 12.5 : 13, fontWeight: 700, color: "var(--text3)", lineHeight: 1.4 }}>
-                  {i + 1}. {q}
-                </span>
-                <span style={{ fontWeight: 700, color: "var(--accent)", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0, fontSize: isMobile ? 12.5 : 14 }}>
-                  {fasit.quiz[i]}
-                </span>
-              </div>
-            ) : null
-          )}
+          <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <PatternSectionLabel theme={theme}>VM-quiz fasit</PatternSectionLabel>
+            <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>1 poeng per rett svar · spørsmål 4 godtar ±5 mål.</span>
+          </div>
+          <QuizAnswerKey fasit={fasit} />
         </div>
       )}
       {!showBonus && (
@@ -2927,6 +3023,20 @@ const S = {
     borderRadius: 20, fontSize: 12, fontWeight: 750, cursor: "pointer", whiteSpace: "nowrap",
   },
   ceremonyToggleOpen: { color: "var(--accent)", borderColor: "var(--accent)66" },
+  ceremonyModalOverlay: {
+    position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "clamp(8px, 2vw, 24px)", background: "rgba(0, 0, 0, 0.82)", backdropFilter: "blur(8px)", boxSizing: "border-box",
+  },
+  ceremonyModal: {
+    position: "relative", width: "min(1180px, 100%)", height: "min(820px, calc(100dvh - 16px))",
+    display: "flex", overflow: "auto", background: "var(--bg0)", border: "1px solid var(--border)", borderRadius: 20,
+    boxShadow: "0 28px 90px rgba(0, 0, 0, 0.65)",
+  },
+  ceremonyModalClose: {
+    position: "absolute", top: 10, right: 10, zIndex: 3, display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--bg4)", color: "var(--text1)",
+    fontSize: 25, lineHeight: 1, cursor: "pointer", boxShadow: "0 8px 24px rgba(0, 0, 0, 0.28)",
+  },
 
   adminWrap: { padding: 16, maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
 

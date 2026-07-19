@@ -166,6 +166,196 @@
     0%, 100% { opacity: 0.62; transform: scale(0.94); }
     50% { opacity: 1; transform: scale(1.05); }
   }
+  .ceremony-present--standalone {
+    height: calc(100dvh - 85px);
+    max-height: calc(100dvh - 85px);
+    overflow: hidden;
+  }
+  .ceremony-chart-svg { min-height: 0; }
+  .ceremony-chart-heading {
+    flex: 0 0 auto;
+    padding: clamp(18px, 3vh, 32px) 20px 4px;
+    text-align: center;
+  }
+  .ceremony-chart-heading > span {
+    display: block;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .ceremony-chart-heading h2 {
+    margin: 7px 0 6px;
+    color: var(--text1);
+    font-size: clamp(18px, 1.8vw, 25px);
+    font-weight: 950;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  .ceremony-intro {
+    position: relative;
+    isolation: isolate;
+    flex: 1;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 100%;
+    overflow: hidden;
+    color: #F7F3E8;
+    background:
+      radial-gradient(ellipse 58% 78% at 75% 48%, rgba(190, 139, 45, 0.2), transparent 67%),
+      radial-gradient(ellipse 42% 55% at 8% 92%, rgba(0, 121, 68, 0.13), transparent 72%),
+      linear-gradient(135deg, #050505 0%, #090806 58%, #050505 100%);
+  }
+  .ceremony-intro-grain {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    opacity: 0.13;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(112deg, transparent 0 2px, rgba(255,255,255,0.05) 2px 3px, transparent 3px 8px);
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,0.75), transparent 88%);
+  }
+  .ceremony-intro-inner {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    min-height: 100%;
+    padding: clamp(52px, 8vh, 90px) clamp(34px, 7vw, 84px);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+  }
+  .ceremony-intro-copy {
+    width: min(475px, 47%);
+    animation: ceremony-copy-in 800ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+  .ceremony-intro-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: #D8B15A;
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .ceremony-intro-kicker > span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #00DC64;
+    box-shadow: 0 0 0 4px rgba(0,220,100,0.11), 0 0 14px rgba(0,220,100,0.48);
+  }
+  .ceremony-intro-title {
+    margin: 18px 0 17px;
+    font-size: clamp(56px, 6.6vw, 94px);
+    line-height: 0.88;
+    letter-spacing: -0.07em;
+    font-weight: 950;
+  }
+  .ceremony-intro-title em {
+    color: #D8B15A;
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 400;
+    letter-spacing: -0.075em;
+  }
+  .ceremony-intro-description {
+    max-width: 420px;
+    margin: 0;
+    color: #B8B3A8;
+    font-size: 15px;
+    line-height: 1.63;
+  }
+  .ceremony-intro-route {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 22px;
+    color: #D8B15A;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .ceremony-intro-route b { color: rgba(216,177,90,0.4); }
+  .ceremony-intro-start {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    min-height: 52px;
+    margin-top: 30px;
+    padding: 0 25px;
+    border: 0;
+    border-radius: 999px;
+    color: #051008;
+    background: #00DC64;
+    box-shadow: 0 12px 38px rgba(0,220,100,0.17);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  }
+  .ceremony-intro-start > span {
+    font-size: 22px;
+    line-height: 0;
+    transition: transform 180ms ease;
+  }
+  .ceremony-intro-start:hover {
+    transform: translateY(-2px);
+    background: #17E875;
+    box-shadow: 0 16px 42px rgba(0,220,100,0.25);
+  }
+  .ceremony-intro-start:hover > span { transform: translateX(3px); }
+  .ceremony-intro-start:focus-visible { outline: 3px solid #F7F3E8; outline-offset: 4px; }
+  .ceremony-intro-hint {
+    margin: 13px 0 0;
+    color: #706D66;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .ceremony-intro-prize-stage {
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 0 40%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    animation: ceremony-prize-drift 9s ease-in-out infinite;
+  }
+  .ceremony-intro-prize-aura {
+    position: absolute;
+    width: min(63vw, 770px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(226,181,90,0.32) 0%, rgba(154,105,28,0.12) 38%, transparent 69%);
+    filter: blur(8px);
+    animation: ceremony-aura-pulse 5.5s ease-in-out infinite;
+  }
+  .ceremony-intro-prize-floor {
+    position: absolute;
+    bottom: 7%;
+    width: min(45vw, 520px);
+    height: 48px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(205,158,76,0.3), rgba(83,52,13,0.08) 50%, transparent 72%);
+    filter: blur(8px);
+  }
+  .ceremony-intro-prize {
+    position: relative;
+    z-index: 1;
+    width: auto;
+    height: min(70svh, 650px);
+    max-width: 52vw;
+    object-fit: contain;
+    opacity: 0.98;
+    filter: brightness(0) contrast(1.18) drop-shadow(0 0 1px rgba(238,200,114,0.92)) drop-shadow(0 24px 30px rgba(0,0,0,0.92));
+  }
   .bonus-pop { animation: popIn .5s cubic-bezier(.34,1.56,.64,1); }
   @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
   .bonus-star { animation: starPop .6s cubic-bezier(.34,1.56,.64,1); }
@@ -293,11 +483,35 @@
     .ceremony-prize-aura { width: min(110vw, 620px); }
     .ceremony-prize { height: min(55svh, 510px); max-width: 82vw; }
     .ceremony-prize-floor { width: 72vw; bottom: 2%; }
+    .ceremony-intro-inner {
+      align-items: flex-end;
+      padding: 38px 24px 38px;
+    }
+    .ceremony-intro-copy {
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .ceremony-intro-kicker, .ceremony-intro-route { justify-content: center; }
+    .ceremony-intro-title { margin-top: 14px; font-size: clamp(48px, 14vw, 68px); }
+    .ceremony-intro-description { margin: 0 auto; font-size: 14px; }
+    .ceremony-intro-route { margin-top: 17px; gap: 5px; font-size: 9px; }
+    .ceremony-intro-start { width: 100%; margin-top: 23px; }
+    .ceremony-intro-hint { max-width: 290px; margin: 11px auto 0; }
+    .ceremony-intro-prize-stage { inset: 0 2% 49%; }
+    .ceremony-intro-prize-aura { width: min(105vw, 520px); }
+    .ceremony-intro-prize { height: min(42svh, 350px); max-width: 76vw; }
+    .ceremony-intro-prize-floor { width: 68vw; bottom: 3%; }
+    .ceremony-chart-heading { padding: 18px 12px 2px; }
+    .ceremony-present--standalone { height: calc(100dvh - 128px); max-height: calc(100dvh - 128px); }
+    .ceremony-chart-heading h2 { font-size: 18px; }
     .home-welcome { grid-template-columns: 1fr; gap: 16px; }
     .supporter-rower { justify-content: flex-start; }
   }
   @media (prefers-reduced-motion: reduce) {
     .voyage-scene, .voyage-boat, .voyage-oar, .voyage-wave-line, .voyage-bob, .supporter-rower-geometry-float, .supporter-rower-geometry-body, .supporter-rower-geometry-faroar, .supporter-rower-geometry-nearoar, .supporter-rower-letter, .viking-horn-body, .viking-horn-waves { animation: none !important; }
     .voyage-boat, .voyage-rail-progress { transition: none !important; }
-    .bonus-pop, .bonus-star, .podium-rise, .confetti-piece, .ceremony-copy, .ceremony-prize-stage, .ceremony-prize-aura { animation: none !important; }
+    .bonus-pop, .bonus-star, .podium-rise, .confetti-piece, .ceremony-copy, .ceremony-prize-stage, .ceremony-prize-aura, .ceremony-intro-copy, .ceremony-intro-prize-stage, .ceremony-intro-prize-aura { animation: none !important; }
+    .ceremony-intro-start, .ceremony-intro-start > span { transition: none !important; }
   }
