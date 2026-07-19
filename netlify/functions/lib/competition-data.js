@@ -1,10 +1,23 @@
-export const SCHEMA_VERSION = 4;
+import { DEFAULT_QUIZ_RESULTS } from "./competition.js";
+
+export { DEFAULT_QUIZ_RESULTS };
+export const SCHEMA_VERSION = 5;
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 export function migrateCompetitionData(value) {
   if (!isObject(value)) return value;
   const sourceVersion = Number(value.schemaVersion) || 0;
+  const existingQuiz = Array.isArray(value.fasit?.quiz) ? value.fasit.quiz : [];
+  const fasit = sourceVersion < 5 && isObject(value.fasit)
+    ? {
+        ...value.fasit,
+        quiz: DEFAULT_QUIZ_RESULTS.map((answer, index) => {
+          const existing = existingQuiz[index];
+          return existing !== undefined && existing !== null && String(existing).trim() ? existing : answer;
+        }),
+      }
+    : value.fasit;
   const participants = Array.isArray(value.participants)
     ? value.participants.map((participant) => {
         if (!isObject(participant)) return participant;
@@ -38,7 +51,7 @@ export function migrateCompetitionData(value) {
         },
       }
     : value.settings;
-  return { ...value, schemaVersion: SCHEMA_VERSION, participants, settings };
+  return { ...value, schemaVersion: SCHEMA_VERSION, participants, fasit, settings };
 }
 
 export function validateCompetitionData(value) {

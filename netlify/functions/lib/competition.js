@@ -39,6 +39,19 @@ export const POINTS = {
   koBonus: 1, koBonusSemi: 2,
 };
 
+export const DEFAULT_QUIZ_RESULTS = [
+  "5",
+  "Kylian Mbappé",
+  "10",
+  "308",
+  "Nei",
+  "15",
+  "Irak",
+  "4",
+  "Slovenia",
+  "Ja",
+];
+
 const TEAM_NAME_MAP = {
   "south africa": "Sør Afrika", "south korea": "Sør Korea",
   "czechia": "Tsjekkia", "czech republic": "Tsjekkia",
@@ -74,6 +87,11 @@ const norm = (s) => String(s || "")
   .replace(/[\u0300-\u036f]/g, "")
   .toLowerCase()
   .replace(/[^a-zæøå0-9]/g, "");
+const normWords = (s) => String(s || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .match(/[a-zæøå0-9]+/g) || [];
 const normTeam = (s) =>
   String(s || "").replace(/\u00a0/g, " ").toLowerCase()
     .split(/[^a-zæøåäöü0-9]+/).filter((t) => t && !TEAM_CONJ.has(t)).join("");
@@ -105,6 +123,22 @@ export function canonicalTeam(name) {
 export function isOfficialTeam(name) {
   const key = normTeam(name);
   return Boolean(key && CANON_LOOKUP[key]);
+}
+
+export function quizAnswerMatches(actual, pick, index) {
+  if (!actual || !pick) return false;
+  if (index === 3) {
+    const actualGoals = parseInt(String(actual).replace(/\D/g, ""), 10);
+    const pickedGoals = parseInt(String(pick).replace(/\D/g, ""), 10);
+    return Number.isFinite(actualGoals) && Number.isFinite(pickedGoals) && Math.abs(actualGoals - pickedGoals) <= 5;
+  }
+  if (norm(actual) === norm(pick)) return true;
+  if (index !== 1) return false;
+  const actualWords = normWords(actual);
+  const pickedWords = normWords(pick);
+  return actualWords.length > 0
+    && pickedWords.length > 0
+    && actualWords[actualWords.length - 1] === pickedWords[pickedWords.length - 1];
 }
 
 export function toNorwegian(name) {
@@ -277,13 +311,7 @@ export function computeScores(picks, fasit) {
   for (let i = 0; i < 10; i++) {
     const f = fasit.quiz?.[i], p = picks.quiz?.[i];
     if (!f || !p) continue;
-    if (i === 3) {
-      const fn = parseInt(String(f).replace(/\D/g, ""), 10);
-      const pn = parseInt(String(p).replace(/\D/g, ""), 10);
-      if (!isNaN(fn) && !isNaN(pn) && Math.abs(fn - pn) <= 5) s.bonus += POINTS.quiz;
-    } else if (norm(f) === norm(p)) {
-      s.bonus += POINTS.quiz;
-    }
+    if (quizAnswerMatches(f, p, i)) s.bonus += POINTS.quiz;
   }
   return s;
 }

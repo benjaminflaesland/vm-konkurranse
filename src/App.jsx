@@ -3,6 +3,7 @@ import {
   GROUPS,
   GROUP_KEYS,
   CELLS,
+  DEFAULT_QUIZ_RESULTS,
   POINTS,
   buildLiveFasitFromFeeds,
   canonicalTeam,
@@ -11,6 +12,7 @@ import {
   emptyFasit,
   liveResultsSignature,
   mergeLiveResults,
+  quizAnswerMatches,
   recalculateParticipantScores,
   teamMatch,
   toNorwegian,
@@ -136,17 +138,7 @@ function quizResultItems(picks, fasit) {
     if (!pick && !actual) return null;
 
     let status = "pending";
-    if (actual) {
-      if (index === 3) {
-        const actualGoals = parseInt(String(actual).replace(/\D/g, ""), 10);
-        const pickedGoals = parseInt(String(pick).replace(/\D/g, ""), 10);
-        status = Number.isFinite(actualGoals) && Number.isFinite(pickedGoals) && Math.abs(actualGoals - pickedGoals) <= 5
-          ? "hit"
-          : "miss";
-      } else {
-        status = pick && norm(actual) === norm(pick) ? "hit" : "miss";
-      }
-    }
+    if (actual) status = quizAnswerMatches(actual, pick, index) ? "hit" : "miss";
 
     return {
       index,
@@ -286,7 +278,7 @@ const DEMO_DATA = import.meta.env.DEV ? (() => {
     matches: { ...demoR16Winners, ...demoR8Winners, ...demoKvartWinners, 101: "Frankrike", 102: "Brasil" },
     sfLosers: { 101: "Portugal", 102: "Argentina" },
     bronse: "Argentina", finale: "Brasil",
-    quiz: ["3","Ronaldo","8","140","Nei","5","Panama","3","Brasil","Nei"],
+    quiz: [...DEFAULT_QUIZ_RESULTS],
   };
 
   return { participants, fasit };
@@ -315,9 +307,6 @@ const editableSnapshot = (participants, fasit, settings) => ({ participants, fas
 const snapshotSignature = (snapshot) => JSON.stringify(snapshot);
 
 // ── Hjelpere ──
-const norm = (s) =>
-  String(s || "").toLowerCase().replace(/[^a-zæøåäöü0-9]/g, "");
-
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
 const norwegianNameList = (names) => {
   if (names.length < 2) return names[0] || "";
@@ -1162,9 +1151,9 @@ export default function App() {
     if (signature === lastSavedSnapshotRef.current) return;
     pendingSaveRef.current = { snapshot, signature };
     window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), 750);
+    if (mode !== "fasit") saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), 750);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [participants, fasit, settings, loaded, isAdmin]);
+  }, [participants, fasit, settings, loaded, isAdmin, mode]);
 
   useEffect(() => {
     const warnIfDirty = (event) => {
@@ -1266,6 +1255,16 @@ export default function App() {
     flushSaveRef.current?.();
   };
 
+  const saveCurrentChanges = () => {
+    const snapshot = editableSnapshot(participants, fasit, settings);
+    const signature = snapshotSignature(snapshot);
+    if (signature === lastSavedSnapshotRef.current) return;
+    pendingSaveRef.current = { snapshot, signature };
+    saveRetryRef.current = 0;
+    window.clearTimeout(saveTimerRef.current);
+    flushSaveRef.current?.();
+  };
+
   const exportUnsavedData = () => {
     const pending = conflictSnapshotRef.current || pendingSaveRef.current;
     if (!pending?.snapshot) return;
@@ -1335,6 +1334,8 @@ export default function App() {
     ? viewerCeremony
     : settings.ceremonyUnlocked ? settings.ceremony : adminPreviewCeremony;
   const updateActiveCeremony = publicSelfGuided ? setViewerCeremony : setCeremony;
+  const hasUnsavedChanges = isAdmin && hydratedAdminRef.current
+    && snapshotSignature(editableSnapshot(participants, fasit, settings)) !== lastSavedSnapshotRef.current;
 
   return (
     <div style={S.app} data-theme={theme}>
@@ -1473,7 +1474,16 @@ export default function App() {
           recordScoreboardMovement={recordScoreboardMovement}
         />
       )}
-      {mode === "fasit" && <Fasit fasit={fasit} setFasit={setFasit} applyLiveResults={applyLiveResults} />}
+      {mode === "fasit" && (
+        <Fasit
+          fasit={fasit}
+          setFasit={setFasit}
+          applyLiveResults={applyLiveResults}
+          hasUnsavedChanges={hasUnsavedChanges}
+          saveStatus={saveStatus}
+          onSave={saveCurrentChanges}
+        />
+      )}
       {mode === "present" && (
         <React.Suspense fallback={<div style={S.adminWrap}>Laster kåringen …</div>}>
           <Ceremony
@@ -2799,7 +2809,7 @@ function FasitView({ fasit, showBonus, theme }) {
 // ─────────────────────────────────────────────
 // FASIT — faktiske resultater
 // ─────────────────────────────────────────────
-function Fasit({ fasit, setFasit, applyLiveResults }) {
+function Fasit({ fasit, setFasit, applyLiveResults, hasUnsavedChanges, saveStatus, onSave }) {
   const isMobile = useIsMobile();
   const secStyle = isMobile ? { ...S.fasitSection, padding: 13 } : S.fasitSection;
   const [aiState, setAiState] = useState(""); // "" | "loading" | "ok" | "error"
@@ -2855,7 +2865,7 @@ function Fasit({ fasit, setFasit, applyLiveResults }) {
         <div style={S.importDesc}>
           Henter live gruppe-standings, beste treere og kampresultater direkte fra <b>worldcup26.ir</b> (gratis, ingen nøkkel).
           Viser <b>midlertidig stilling</b> selv om gruppen ikke er ferdigspilt.
-          Serveren sjekker i bakgrunnen og lagrer først når en ny ferdigspilt kamp dukker opp. Quiz-resultat fylles inn manuelt.
+          Serveren sjekker i bakgrunnen og lagrer først når en ny ferdigspilt kamp dukker opp. Forhåndsutfylt quizfasit kan justeres under.
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={runAI} disabled={aiState === "loading"} style={S.calcBtn}>
@@ -2978,6 +2988,19 @@ function Fasit({ fasit, setFasit, applyLiveResults }) {
         ))}
       </div>
 
+      {hasUnsavedChanges && (
+        <div style={S.fasitSaveBar}>
+          <span role="status">{saveStatus.state === "error" ? saveStatus.message : "Du har ulagrede endringer."}</span>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={["saving", "conflict"].includes(saveStatus.state)}
+            style={S.fasitSaveBtn}>
+            {saveStatus.state === "saving" ? "Lagrer …" : "Lagre endringer"}
+          </button>
+        </div>
+      )}
+
       <div style={{ ...S.importDesc, textAlign: "center", padding: "8px 0 24px" }}>
         Live-oppdateringer beregner poeng automatisk. Etter manuelle endringer kan du fortsatt gå til <b>Deltakere</b> og trykke «Beregn poeng fra resultat».
       </div>
@@ -3023,6 +3046,17 @@ const S = {
     borderRadius: 20, fontSize: 12, fontWeight: 750, cursor: "pointer", whiteSpace: "nowrap",
   },
   ceremonyToggleOpen: { color: "var(--accent)", borderColor: "var(--accent)66" },
+  fasitSaveBar: {
+    position: "sticky", bottom: 12, zIndex: 12, margin: "18px auto", width: "min(100%, 620px)",
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+    padding: "12px 14px 12px 18px", borderRadius: 14, background: "var(--bg3)",
+    border: "1px solid var(--accent)", boxShadow: "0 14px 36px rgba(0,0,0,.28)",
+    color: "var(--text1)", fontSize: 13, fontWeight: 700,
+  },
+  fasitSaveBtn: {
+    border: 0, borderRadius: 50, padding: "11px 17px", background: "var(--accent)",
+    color: "var(--accent-fg)", fontSize: 13, fontWeight: 850, cursor: "pointer", whiteSpace: "nowrap",
+  },
   ceremonyModalOverlay: {
     position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center",
     padding: "clamp(8px, 2vw, 24px)", background: "rgba(0, 0, 0, 0.82)", backdropFilter: "blur(8px)", boxSizing: "border-box",

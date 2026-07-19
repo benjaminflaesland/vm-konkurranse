@@ -179,17 +179,19 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, selfGui
 
       {canControl ? (
         <div style={S.presentNav}>
-          <button onClick={prev} disabled={phase === "rounds" && step === 0} style={S.navBtn}>‹ Tilbake</button>
+          <button onClick={prev} disabled={phase === "rounds" && step === 0} style={{ ...S.navBtn, justifySelf: "start" }}>‹ Tilbake</button>
           <div style={S.phaseLabel}>
             {isAdmin && !isLive && <span style={S.previewLabel}>Forhåndsvisning</span>}
             {phase !== "rounds" ? phaseLabel : null}
           </div>
-          <button onClick={next} disabled={phase === "winner"} style={{ ...S.navBtn, ...S.navBtnPrimary }}>
-            {phase === "rounds" && step === ROUNDS.length - 1 ? "Bonusrunde ›"
-              : phase === "bonus" && bonusRevealed === competingParticipants.length ? "Kår vinner ›"
-              : phase === "bonus" ? `Vis neste ${nextBonusRevealCount} ›`
-              : "Neste ›"}
-          </button>
+          {phase === "winner" ? <span aria-hidden="true" /> : (
+            <button onClick={next} style={{ ...S.navBtn, ...S.navBtnPrimary }}>
+              {phase === "rounds" && step === ROUNDS.length - 1 ? "Bonusrunde ›"
+                : phase === "bonus" && bonusRevealed === competingParticipants.length ? "Kår vinner ›"
+                : phase === "bonus" ? `Vis neste ${nextBonusRevealCount} ›`
+                : "Neste ›"}
+            </button>
+          )}
         </div>
       ) : (
         <div style={S.publicCeremonyStatus} role="status">
@@ -447,13 +449,13 @@ const S = {
   dot: { display: "inline-block", width: 10, height: 10, borderRadius: "50%", marginRight: 9, verticalAlign: "middle" },
   presentWrap: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: 16, maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
   chartCard: { flex: 1, minHeight: 0, background: "var(--bg3)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "hidden" },
-  presentNav: { flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 12 },
+  presentNav: { flexShrink: 0, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", marginTop: 10, gap: 12 },
   phaseLabel: { fontSize: 17, color: "var(--text1)", fontWeight: 900, textAlign: "center", display: "flex", alignItems: "center", gap: 8 },
   previewLabel: { display: "inline-block", padding: "3px 7px", borderRadius: 6, color: "#D8B15A", background: "#D8B15A1A", fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" },
   publicCeremonyStatus: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 18, color: "var(--text3)", fontSize: 13, fontWeight: 700 },
   publicCeremonyDot: { width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", boxShadow: "0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent)" },
   navBtn: { background: "transparent", border: "1px solid var(--border)", color: "var(--text1)", padding: "12px 18px", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 700 },
-  navBtnPrimary: { background: "var(--accent)", color: "var(--accent-fg)", border: "none", borderRadius: 50, padding: "14px 20px" },
+  navBtnPrimary: { background: "var(--accent)", color: "var(--accent-fg)", border: "none", borderRadius: 50, padding: "14px 20px", justifySelf: "end" },
   bonusHeader: { fontSize: 24, color: "var(--text1)", textAlign: "center", marginBottom: 22, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" },
   bonusPop: { background: "var(--accent)", color: "var(--accent-fg)", padding: "5px 16px", borderRadius: 50, fontSize: 15, fontWeight: 800 },
   bonusRow: { position: "absolute", left: 0, right: 0, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderRadius: 12, transition: "top .8s cubic-bezier(.34,1.2,.64,1), background .4s", background: "var(--bg0)" },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_QUIZ_RESULTS,
   migrateCompetitionData,
   serializePublicCompetition,
   validateCompetitionData,
@@ -34,11 +35,27 @@ function data(phase = "rounds", ceremonyUnlocked = false) {
 describe("competition data schema", () => {
   it("tar Benjamin tilbake i konkurransen og fryser bonusrekkefølgen", () => {
     const migrated = migrateCompetitionData(data("bonus"));
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.participants.map((participant) => participant.excluded)).toEqual([false, false]);
     expect(migrated.settings.ceremony.bonusOrder).toEqual(["b", "a"]);
+    expect(migrated.fasit.quiz).toEqual(["fasit", ...DEFAULT_QUIZ_RESULTS.slice(1)]);
     expect(migrateCompetitionData(migrated)).toEqual(migrated);
     expect(validateCompetitionData(migrated)).toEqual({ ok: true });
+  });
+
+  it("forhåndsfyller bare tomme quizsvar i eldre data", () => {
+    const previous = data();
+    previous.schemaVersion = 4;
+    previous.fasit.quiz = ["", "Mbappé", null, "  ", "Ja"];
+
+    expect(migrateCompetitionData(previous).fasit.quiz).toEqual([
+      "5",
+      "Mbappé",
+      "10",
+      "308",
+      "Ja",
+      ...DEFAULT_QUIZ_RESULTS.slice(5),
+    ]);
   });
 
   it("gjeninnlemmer Benjamin én gang uten å overstyre senere adminvalg", () => {
@@ -85,7 +102,7 @@ describe("competition data schema", () => {
     const migrated = migrateCompetitionData(data("winner"));
     const publicData = serializePublicCompetition(migrated);
     expect(publicData.participants[0].picks.quiz).toEqual(["hemmelig"]);
-    expect(publicData.fasit.quiz).toEqual(["fasit"]);
+    expect(publicData.fasit.quiz).toEqual(["fasit", ...DEFAULT_QUIZ_RESULTS.slice(1)]);
     expect(publicData.participants.every((participant) => Object.hasOwn(participant, "bonus"))).toBe(true);
     expect(publicData.participants[0]).not.toHaveProperty("internalNote");
   });
@@ -96,7 +113,7 @@ describe("competition data schema", () => {
     expect(publicData.settings.ceremonyUnlocked).toBe(true);
     expect(publicData.settings.ceremonyReleaseId).toBe("release-1");
     expect(publicData.participants[0].picks.quiz).toEqual(["hemmelig"]);
-    expect(publicData.fasit.quiz).toEqual(["fasit"]);
+    expect(publicData.fasit.quiz).toEqual(["fasit", ...DEFAULT_QUIZ_RESULTS.slice(1)]);
     expect(publicData.participants.every((participant) => Object.hasOwn(participant, "bonus"))).toBe(true);
   });
 });

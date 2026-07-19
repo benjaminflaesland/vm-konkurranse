@@ -17,7 +17,7 @@ const SECRET = "test-secret-that-is-longer-than-thirty-two-characters";
 
 function storedData() {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     revision: "r1",
     updatedAt: "2026-07-13T10:00:00.000Z",
     participants: [{

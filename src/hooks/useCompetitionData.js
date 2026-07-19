@@ -39,7 +39,7 @@ async function save(data, baseRevision) {
   const response = await fetch("/.netlify/functions/data", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: { ...data, schemaVersion: 4 }, baseRevision }),
+    body: JSON.stringify({ data: { ...data, schemaVersion: 5 }, baseRevision }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.ok) {

@@ -51,7 +51,7 @@ describe("competition domain", () => {
     fasit.sfLosers = { 101: "Spania", 102: "Frankrike" };
     fasit.bronse = "Spania";
     fasit.finale = "Norge";
-    fasit.quiz = ["3", "Mbappé", "", "140", "Ja", "", "", "", "", ""];
+    fasit.quiz = ["3", "Kylian Mbappé", "", "140", "Ja", "", "", "", "", ""];
 
     const picks = emptyPicks();
     picks.groups.A = { first: "Mexico", second: "South Africa" };

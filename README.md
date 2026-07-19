@@ -57,7 +57,7 @@ Sett disse i Netlify for Production og Deploy Previews:
 
 ## Data og API
 
-Rotobjektet bruker `schemaVersion: 4`. Hver deltaker har eksplisitt `excluded: boolean`. Serveren genererer `revision` og `updatedAt`; klienten sender `baseRevision` ved lagring. En konkurrerende endring gir `409`, stopper autosave og lar administrator eksportere lokale endringer eller hente skyversjonen.
+Rotobjektet bruker `schemaVersion: 5`. Hver deltaker har eksplisitt `excluded: boolean`. Serveren genererer `revision` og `updatedAt`; klienten sender `baseRevision` ved lagring. En konkurrerende endring gir `409`, stopper autosave og lar administrator eksportere lokale endringer eller hente skyversjonen.
 
 Viktige kontrakter:
 

@@ -21,13 +21,13 @@ function winnerEnvelope() {
         excluded: false,
         picks: {
           groups: {}, thirds: [], matches: {}, matchups: {}, sfLosers: {}, bronse: "", finale: "",
-          quiz: ["3", "Haaland"],
+          quiz: ["3", "Mbappe", "Haaland"],
         },
       }],
       fasit: {
         groups: Object.fromEntries("ABCDEFGHIJKL".split("").map((group) => [group, { first: "", second: "" }])),
         thirds: [], matches: {}, matchups: {}, sfLosers: {}, bronse: "", finale: "",
-        quiz: ["3", "Mbappé"],
+        quiz: ["3", "Kylian Mbappé", "Ronaldo"],
       },
       settings: {
         ceremonyUnlocked: true,
@@ -91,7 +91,7 @@ describe("offentlig VM-quizfasit", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Resultat" }));
     expect(await screen.findByText("VM-quiz fasit")).toBeInTheDocument();
-    expect(screen.getByText("Mbappé")).toBeInTheDocument();
+    expect(screen.getByText("Kylian Mbappé")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Stilling" }));
     const participantRow = await screen.findByRole("button", { name: /Ada/ });
@@ -100,10 +100,10 @@ describe("offentlig VM-quizfasit", () => {
     const quizHeading = await screen.findByText("VM-quiz");
     const quizSection = quizHeading.parentElement?.parentElement;
     expect(quizSection).toBeTruthy();
-    expect(within(quizSection).getByText("Rett · +1 p")).toBeInTheDocument();
+    expect(within(quizSection).getAllByText("Rett · +1 p")).toHaveLength(2);
     expect(within(quizSection).getByText("Bom")).toBeInTheDocument();
-    expect(within(quizSection).getAllByText(/Tips:/)).toHaveLength(2);
-    expect(within(quizSection).getAllByText(/Fasit:/)).toHaveLength(2);
+    expect(within(quizSection).getAllByText(/Tips:/)).toHaveLength(3);
+    expect(within(quizSection).getAllByText(/Fasit:/)).toHaveLength(3);
   });
 
   it("lar admin publisere en ny kåring med en egen utgivelses-id", async () => {
@@ -130,11 +130,28 @@ describe("offentlig VM-quizfasit", () => {
 
     const { default: App } = await import("../src/App.jsx");
     render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rediger resultat" }));
+    const quizInputs = await screen.findAllByPlaceholderText("Resultat");
+    fireEvent.change(quizInputs[0], { target: { value: "5" } });
+    const saveButton = screen.getByRole("button", { name: "Lagre endringer" });
+    expect(saveButton).toBeInTheDocument();
+    fireEvent.click(saveButton);
+    await waitFor(() => {
+      const quizSaveCall = fetchMock.mock.calls.find(([, options = {}]) => {
+        if (options.method !== "POST") return false;
+        return JSON.parse(options.body).data.fasit.quiz[0] === "5";
+      });
+      expect(quizSaveCall).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Lagre endringer" })).not.toBeInTheDocument();
+    });
     fireEvent.click(await screen.findByRole("button", { name: "Kåring" }));
     fireEvent.click(screen.getByRole("button", { name: "Gjør kåring tilgjengelig" }));
 
     await waitFor(() => {
-      const saveCall = fetchMock.mock.calls.find(([, options = {}]) => options.method === "POST");
+      const saveCall = fetchMock.mock.calls.find(([, options = {}]) => {
+        if (options.method !== "POST") return false;
+        return JSON.parse(options.body).data.settings.ceremonyUnlocked === true;
+      });
       expect(saveCall).toBeTruthy();
       const saved = JSON.parse(saveCall[1].body).data.settings;
       expect(saved.ceremonyUnlocked).toBe(true);
@@ -173,5 +190,12 @@ describe("offentlig VM-quizfasit", () => {
     expect(within(ceremonyDialog).getByText("Bonusspørsmål (8/16)")).toBeInTheDocument();
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "‹ Tilbake" }));
     expect(within(ceremonyDialog).getByText("Bonusspørsmål (4/16)")).toBeInTheDocument();
+    for (let index = 0; index < 3; index += 1) {
+      fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Vis neste 4 ›" }));
+    }
+    fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Kår vinner ›" }));
+    expect(within(ceremonyDialog).getByText("Vinner!")).toBeInTheDocument();
+    expect(within(ceremonyDialog).queryByRole("button", { name: "Neste ›" })).not.toBeInTheDocument();
+    expect(within(ceremonyDialog).queryByRole("button", { name: "Kår vinner ›" })).not.toBeInTheDocument();
   });
 });
