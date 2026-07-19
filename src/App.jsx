@@ -1256,7 +1256,10 @@ export default function App() {
   };
 
   const saveCurrentChanges = () => {
-    const snapshot = editableSnapshot(participants, fasit, settings);
+    const nextParticipants = recalculateParticipantScores(participants, fasit);
+    recordScoreboardMovement(participants, nextParticipants, "Oppdatert resultat");
+    setParticipants(nextParticipants);
+    const snapshot = editableSnapshot(nextParticipants, fasit, settings);
     const signature = snapshotSignature(snapshot);
     if (signature === lastSavedSnapshotRef.current) return;
     pendingSaveRef.current = { snapshot, signature };
@@ -3002,7 +3005,7 @@ function Fasit({ fasit, setFasit, applyLiveResults, hasUnsavedChanges, saveStatu
       )}
 
       <div style={{ ...S.importDesc, textAlign: "center", padding: "8px 0 24px" }}>
-        Live-oppdateringer beregner poeng automatisk. Etter manuelle endringer kan du fortsatt gå til <b>Deltakere</b> og trykke «Beregn poeng fra resultat».
+        Poengene beregnes automatisk når du lagrer resultatendringer.
       </div>
     </div>
   );

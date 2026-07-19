@@ -114,6 +114,7 @@ describe("offentlig VM-quizfasit", () => {
       name: "Bea Nordmann",
       color: "#3D7EF5",
     });
+    adminEnvelope.data.participants[0].bonus = 99;
     adminEnvelope.data.settings = {
       ceremonyUnlocked: false,
       ceremonyReleaseId: null,
@@ -142,6 +143,7 @@ describe("offentlig VM-quizfasit", () => {
         return JSON.parse(options.body).data.fasit.quiz[0] === "5";
       });
       expect(quizSaveCall).toBeTruthy();
+      expect(JSON.parse(quizSaveCall[1].body).data.participants[0].bonus).toBe(1);
       expect(screen.queryByRole("button", { name: "Lagre endringer" })).not.toBeInTheDocument();
     });
     fireEvent.click(await screen.findByRole("button", { name: "Kåring" }));
