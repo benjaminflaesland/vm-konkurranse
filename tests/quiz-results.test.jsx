@@ -183,7 +183,13 @@ describe("offentlig VM-quizfasit", () => {
 
     const ceremonyDialog = await screen.findByRole("dialog", { name: "VM-kåring" });
     fireEvent.click(await within(ceremonyDialog).findByRole("button", { name: "Start kåringen" }));
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 3; index += 1) {
+      fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
+    }
+    const guideEnd = Number(ceremonyDialog.querySelector(".ceremony-rank-guide")?.getAttribute("x2"));
+    const firstLabelStart = Number(ceremonyDialog.querySelector(".ceremony-participant-label")?.getAttribute("x"));
+    expect(guideEnd).toBeLessThan(firstLabelStart);
+    for (let index = 0; index < 2; index += 1) {
       fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
     }
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Bonusrunde ›" }));

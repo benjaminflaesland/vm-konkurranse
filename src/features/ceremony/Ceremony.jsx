@@ -296,9 +296,9 @@ function BumpChart({ participants, step }) {
       <svg className="ceremony-chart-svg" viewBox={`0 0 ${W} ${H}`} style={{ flex: "1 1 auto", minHeight: 0, width: "100%", height: "100%", display: "block" }}>
 
         {Array.from({ length: n }).map((_, rank) => (
-          <line key={rank}
+          <line key={rank} className="ceremony-rank-guide"
             x1={padL} y1={yFor(rank)}
-            x2={xFor(ROUNDS.length - 1) + 12} y2={yFor(rank)}
+            x2={xFor(step) + 12} y2={yFor(rank)}
             stroke="var(--border)" strokeWidth="1" />
         ))}
 
@@ -352,7 +352,7 @@ function BumpChart({ participants, step }) {
               {isLeader && (
                 <CrownIcon className="ceremony-leader-crown" size={crownSize} x={labelX} y={y - crownSize / 2 - 1} />
               )}
-              <text x={labelX + (isLeader ? crownSize + 4 : 0)} y={y + 5} style={{ fill: "var(--text1)" }} fontSize={isMobile ? 13 : 14}
+              <text className="ceremony-participant-label" x={labelX + (isLeader ? crownSize + 4 : 0)} y={y + 5} style={{ fill: "var(--text1)" }} fontSize={isMobile ? 13 : 14}
                 fontWeight="700" fontFamily="'Inter', sans-serif">
                 {firstName(p.name)}
                 <tspan style={{ fill: "var(--text3)" }} fontSize={isMobile ? 10 : 11} fontWeight="600" dx="4">
