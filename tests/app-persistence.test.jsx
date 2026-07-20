@@ -48,6 +48,7 @@ describe("admin hydration and persistence", () => {
       throw new Error(`Uventet kall: ${url}`);
     });
     await renderAdmin(fetchMock);
+    expect(screen.getByRole("navigation", { name: "Hovednavigasjon" }).querySelectorAll(".nav-icon")).toHaveLength(7);
     expect(fetchMock.mock.calls.filter(([url, options = {}]) => url.endsWith("/data") && options.method === "POST")).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Deltakere" }));

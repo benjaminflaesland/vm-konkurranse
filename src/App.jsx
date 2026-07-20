@@ -474,17 +474,20 @@ function LockIcon({ size = 16 }) {
   );
 }
 
+const NAVIGATION_ICON_PATHS = {
+  hjem: <><path d="M3.5 10.5 12 3.8l8.5 6.7" /><path d="M5.7 9.2v10h12.6v-10M9.3 19.2v-5.8h5.4v5.8" /></>,
+  stilling: <><path d="M5 19v-5.5h3V19H5ZM10.5 19V9h3v10h-3ZM16 19V5h3v14h-3Z" /><path d="M3.5 19.2h17" /></>,
+  "fasit-view": <><path d="M6 3.8h12v16.4H6z" /><path d="M9 8h6M9 12h2.5M9 16l1.6 1.5L15 13" /></>,
+  "vei-vm": <><circle cx="6" cy="17.5" r="2.2" /><circle cx="18" cy="6.5" r="2.2" /><path d="M8.2 17.5h2.1c3.8 0 1.8-7.6 5.5-8.7" /></>,
+  present: <><path d="M7 4h10v3.8a5 5 0 0 1-10 0V4Z" /><path d="M7 5.5H4.5a2 2 0 0 0 2 3.5H7M17 5.5h2.5a2 2 0 0 1-2 3.5H17M12 12.8v3.4M8.5 20h7M9.5 20c.2-1.9 1-3 2.5-3.8 1.5.8 2.3 1.9 2.5 3.8" /></>,
+  deltakere: <><circle cx="9" cy="8" r="3" /><circle cx="17.2" cy="9.2" r="2.2" /><path d="M3.8 19c.4-3.3 2.1-5.2 5.2-5.2s4.8 1.9 5.2 5.2M15 14.3c2.8-.3 4.6 1.2 5.2 3.7" /></>,
+  fasit: <><path d="M5.5 4h8.7l4.3 4.3V20h-13z" /><path d="M14 4v4.5h4.5M9 15.8l1.2 1.2 5-5M9 10.5h3" /></>,
+};
+
 function NavigationIcon({ mode, size = 18 }) {
-  const paths = {
-    hjem: <><path d="M3.5 10.5 12 3.8l8.5 6.7" /><path d="M5.7 9.2v10h12.6v-10M9.3 19.2v-5.8h5.4v5.8" /></>,
-    stilling: <><path d="M5 19v-5.5h3V19H5ZM10.5 19V9h3v10h-3ZM16 19V5h3v14h-3Z" /><path d="M3.5 19.2h17" /></>,
-    "fasit-view": <><path d="M6 3.8h12v16.4H6z" /><path d="M9 8h6M9 12h2.5M9 16l1.6 1.5L15 13" /></>,
-    "vei-vm": <><circle cx="6" cy="17.5" r="2.2" /><circle cx="18" cy="6.5" r="2.2" /><path d="M8.2 17.5h2.1c3.8 0 1.8-7.6 5.5-8.7" /></>,
-    present: <><path d="M7 4h10v3.8a5 5 0 0 1-10 0V4Z" /><path d="M7 5.5H4.5a2 2 0 0 0 2 3.5H7M17 5.5h2.5a2 2 0 0 1-2 3.5H17M12 12.8v3.4M8.5 20h7M9.5 20c.2-1.9 1-3 2.5-3.8 1.5.8 2.3 1.9 2.5 3.8" /></>,
-  };
   return (
-    <svg className="mobile-nav-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-      <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[mode]}</g>
+    <svg className="nav-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+      <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{NAVIGATION_ICON_PATHS[mode]}</g>
     </svg>
   );
 }
@@ -1451,6 +1454,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
+                    <NavigationIcon mode={tabMode} size={16} />
                     {tabMode === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.tabLock}><LockIcon size={12} /></span>}
                     {label}
                   </>
@@ -1463,6 +1467,7 @@ export default function App() {
               {ADMIN_TABS.map(({ mode: tabMode, label }) => (
                 <button key={tabMode} type="button" aria-current={mode === tabMode ? "page" : undefined}
                   onClick={() => setMode(tabMode)} style={{ ...S.mobileAdminBtn, ...(mode === tabMode ? S.modeBtnActive : {}) }}>
+                  <NavigationIcon mode={tabMode} size={15} />
                   {label}
                 </button>
               ))}
@@ -3105,6 +3110,7 @@ const S = {
   modeBtn: {
     border: "none", background: "transparent", color: "var(--text3)",
     padding: "8px 13px", borderRadius: 50, cursor: "pointer", fontSize: 14, fontWeight: 700,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
     transition: "all .2s", whiteSpace: "nowrap", flexShrink: 0,
   },
   mobileModeBtn: {
@@ -3124,6 +3130,7 @@ const S = {
   },
   mobileAdminBtn: {
     minWidth: 0, border: 0, borderRadius: 9, padding: "8px 6px", background: "transparent",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
     color: "var(--text3)", fontSize: 11, fontWeight: 750, cursor: "pointer",
   },
   ceremonyToggle: {
