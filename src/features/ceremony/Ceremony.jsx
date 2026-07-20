@@ -298,7 +298,7 @@ function BumpChart({ participants, step }) {
         {Array.from({ length: n }).map((_, rank) => (
           <line key={rank} className="ceremony-rank-guide"
             x1={padL} y1={yFor(rank)}
-            x2={xFor(step) + 12} y2={yFor(rank)}
+            x2={xFor(step)} y2={yFor(rank)}
             stroke="var(--border)" strokeWidth="1" />
         ))}
 
@@ -327,7 +327,7 @@ function BumpChart({ participants, step }) {
               <path d={smoothPath(pts)} fill="none" stroke={p.color} strokeWidth="3.5"
                 strokeLinecap="round" style={{ transition: "d .7s ease" }} />
               {pts.map((pt, i) => (
-                <circle key={i} cx={pt.x} cy={pt.y}
+                <circle key={i} className={isLast(i) ? "ceremony-active-node" : undefined} cx={pt.x} cy={pt.y}
                   r={isLast(i) ? 7 : 5}
                   fill={isLast(i) ? p.color : "var(--bg3)"}
                   stroke={p.color}
