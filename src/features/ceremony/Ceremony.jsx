@@ -380,16 +380,30 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
     bonusShown: revealedIds.has(p.id),
   }));
   const sorted = rankByScore(current, (participant) => participant.shown);
-  const justRevealed = revealed > 0 ? bonusOrder[revealed - 1] : null;
+  const revealedBatchSize = revealed > 0
+    ? (revealed % BONUS_REVEAL_BATCH_SIZE || Math.min(BONUS_REVEAL_BATCH_SIZE, revealed))
+    : 0;
+  const justRevealedBatch = bonusOrder.slice(Math.max(0, revealed - revealedBatchSize), revealed);
   const rowH = Math.min(56, Math.max(36, 500 / Math.max(sorted.length, 1)));
 
   return (
     <div style={{ ...S.chartCard, ...(isMobile ? { padding: 12 } : {}) }}>
-      <div style={{ ...S.bonusHeader, ...(isMobile ? { fontSize: 20, marginBottom: 14 } : {}) }}>
+      <div style={{
+        ...S.bonusHeader,
+        ...(isMobile ? { flexDirection: "column", gap: 8, fontSize: 20, marginBottom: 14 } : {}),
+      }}>
         {BONUS_LABEL}
-        {justRevealed && (
-          <span key={justRevealed.id} className="bonus-pop" style={S.bonusPop}>
-            {firstName(justRevealed.name)} +{justRevealed.bonus || 0}
+        {justRevealedBatch.length > 0 && (
+          <span key={justRevealedBatch.map((participant) => participant.id).join(":")}
+            className="bonus-pop ceremony-bonus-reveal-batch" style={{
+            ...S.bonusPop,
+            ...(isMobile ? { padding: "7px 12px", fontSize: 13 } : {}),
+          }} aria-live="polite">
+            {justRevealedBatch.map((participant) => (
+              <span key={participant.id} className="ceremony-bonus-reveal-item" style={S.bonusPopItem}>
+                {firstName(participant.name)} +{participant.bonus || 0}
+              </span>
+            ))}
           </span>
         )}
       </div>
@@ -585,7 +599,8 @@ const S = {
   navBtn: { background: "transparent", border: "1px solid var(--border)", color: "var(--text1)", padding: "12px 18px", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 700 },
   navBtnPrimary: { background: "var(--accent)", color: "var(--accent-fg)", border: "none", borderRadius: 50, padding: "14px 20px", justifySelf: "end" },
   bonusHeader: { fontSize: 24, color: "var(--text1)", textAlign: "center", marginBottom: 22, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" },
-  bonusPop: { background: "var(--accent)", color: "var(--accent-fg)", padding: "5px 16px", borderRadius: 50, fontSize: 15, fontWeight: 800 },
+  bonusPop: { maxWidth: "100%", boxSizing: "border-box", background: "var(--accent)", color: "var(--accent-fg)", padding: "5px 16px", borderRadius: 18, fontSize: 15, fontWeight: 800, display: "flex", justifyContent: "center", gap: "3px 10px", flexWrap: "wrap" },
+  bonusPopItem: { whiteSpace: "nowrap" },
   bonusList: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", paddingRight: 2 },
   bonusRow: { position: "absolute", left: 0, right: 0, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderRadius: 12, transition: "top .8s cubic-bezier(.34,1.2,.64,1), background .4s", background: "var(--bg0)" },
   bonusRank: { width: 28, fontWeight: 800, color: "var(--text3)", fontSize: 15 },

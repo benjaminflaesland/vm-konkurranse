@@ -199,6 +199,7 @@ describe("offentlig VM-quizfasit", () => {
     expect(within(ceremonyDialog).getByText("Bonusspørsmål (0/16)")).toBeInTheDocument();
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Vis neste 4 ›" }));
     expect(within(ceremonyDialog).getByText("Bonusspørsmål (4/16)")).toBeInTheDocument();
+    expect(ceremonyDialog.querySelectorAll(".ceremony-bonus-reveal-item")).toHaveLength(4);
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Vis neste 4 ›" }));
     expect(within(ceremonyDialog).getByText("Bonusspørsmål (8/16)")).toBeInTheDocument();
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "‹ Tilbake" }));
@@ -261,6 +262,7 @@ describe("offentlig VM-quizfasit", () => {
     for (let index = 0; index < 4; index += 1) {
       fireEvent.click(within(ceremonyDialog).getByRole("button", { name: /Vis neste/ }));
     }
+    expect(ceremonyDialog.querySelectorAll(".ceremony-bonus-reveal-item")).toHaveLength(1);
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Kår vinner ›" }));
     expect(ceremonyDialog.querySelector(".ceremony-podium-name")?.style.textOverflow).toBe("ellipsis");
     expect(ceremonyDialog.querySelector(".ceremony-rest-name")?.style.textOverflow).toBe("ellipsis");
