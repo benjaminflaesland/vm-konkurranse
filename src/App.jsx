@@ -13,6 +13,7 @@ import {
   liveResultsSignature,
   mergeLiveResults,
   quizAnswerMatches,
+  rankByScore,
   recalculateParticipantScores,
   teamMatch,
   toNorwegian,
@@ -779,9 +780,10 @@ function cumulative(p, uptoIdx) {
   return s;
 }
 function rankingAt(participants, roundIdx) {
-  return [...participants]
-    .map((p) => ({ ...p, total: cumulative(p, roundIdx) }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  return rankByScore(
+    participants.map((p) => ({ ...p, total: cumulative(p, roundIdx) })),
+    (participant) => participant.total,
+  );
 }
 
 function movementTotal(p) {
@@ -789,10 +791,12 @@ function movementTotal(p) {
 }
 
 function leaderboardSnapshotRows(participants) {
-  return participants
-    .filter((p) => !isExcludedFromCompetition(p))
-    .map((p) => ({ id: p.id, name: p.name, total: movementTotal(p) }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+  return rankByScore(
+    participants
+      .filter((p) => !isExcludedFromCompetition(p))
+      .map((p) => ({ id: p.id, name: p.name, total: movementTotal(p) })),
+    (participant) => participant.total,
+  );
 }
 
 function scoreboardMovementSignature(participants) {
@@ -810,7 +814,7 @@ function createLeaderboardSnapshot(participants, sourceLabel = "Siste oppdaterin
   return {
     sourceLabel,
     takenAt: Date.now(),
-    rows: rows.map((p, i) => ({ id: p.id, rank: i + 1, total: p.total })),
+    rows: rows.map((p) => ({ id: p.id, rank: p.rank, total: p.total })),
   };
 }
 
@@ -818,10 +822,10 @@ function leaderboardMovementFromSnapshot(participants, snapshot) {
   if (!snapshot?.rows?.length) return new Map();
   const before = new Map(snapshot.rows.map((p) => [p.id, p]));
   const movement = new Map();
-  leaderboardSnapshotRows(participants).forEach((p, i) => {
+  leaderboardSnapshotRows(participants).forEach((p) => {
     const previous = before.get(p.id);
     if (!previous) return;
-    const currentRank = i + 1;
+    const currentRank = p.rank;
     const rankChange = previous.rank - currentRank;
     const pointsGained = p.total - previous.total;
     if (rankChange <= 0 && pointsGained <= 0) return;
@@ -1808,9 +1812,9 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
         <div style={S.previewBox}>
           <div style={S.previewTitle}>Foreløpig stilling (uten bonus)</div>
           <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {ranked.map((p, i) => (
+            {ranked.map((p) => (
               <li key={p.id} style={S.previewItem}>
-                <span style={S.previewRank}>{i + 1}</span>
+                <span style={S.previewRank}>{p.rank}</span>
                 <span style={{ ...S.dot, background: p.color }} />
                 <span style={{ flex: 1 }}>{firstName(p.name)}</span>
                 <span style={{ fontWeight: 800, color: "var(--accent)" }}>{p.total} p</span>
@@ -2148,8 +2152,10 @@ function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
   const [openId, setOpenId] = useState(null);
   const roundColumnWidth = "clamp(46px, 5.8vw, 68px)";
   const toTotal = (p) => ({ ...p, total: cumulative(p, ROUNDS.length - 1) + (showBonus ? p.bonus || 0 : 0) });
-  const ranked = participants.filter((p) => !isExcludedFromCompetition(p)).map(toTotal)
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+  const ranked = rankByScore(
+    participants.filter((p) => !isExcludedFromCompetition(p)).map(toTotal),
+    (participant) => participant.total,
+  );
   const excluded = participants.filter(isExcludedFromCompetition).map(toTotal)
     .sort((a, b) => a.name.localeCompare(b.name, "nb-NO"));
   const movementById = leaderboardMovementFromSnapshot(participants, movementSnapshot);
@@ -2195,7 +2201,7 @@ function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
           </span>
         </div>}
         {ranked.map((p, i) => (
-          <LeaderboardEntry key={p.id} participant={p} rank={i + 1} movement={movementById.get(p.id)} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
+          <LeaderboardEntry key={p.id} participant={p} rank={p.rank} movement={movementById.get(p.id)} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
             open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
             divider={i < ranked.length - 1} />
         ))}
@@ -2281,12 +2287,13 @@ function computeHomeStats(participants, showBonus) {
         label: DEPTH_LABEL[deepestDepth],
       }
     : null;
-  const leaderboard = participants
-    .map((p) => ({
+  const leaderboard = rankByScore(
+    participants.map((p) => ({
       name: firstName(p.name),
       total: ROUNDS.reduce((sum, r) => sum + (p.scores[r.key] || 0), 0) + (showBonus ? p.bonus || 0 : 0),
-    }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+    })),
+    (participant) => participant.total,
+  );
   return { total, championRanking, finalistRanking, leaderboard, norway: { advance, champions, deepest: deepestShown } };
 }
 
@@ -2583,7 +2590,15 @@ function Hjem({ participants, showBonus, theme }) {
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span style={HJ.chip}>{N} {N === 1 ? "deltaker" : "deltakere"}</span>
-            {leader && N > 0 && <span style={HJ.chip}>Leder: {leader.name}</span>}
+            {leader && N > 0 && (
+              <span style={HJ.chip}>
+                {tiedLeaders.length > 3
+                  ? `${tiedLeaders.length} delte ledere`
+                  : tiedLeaders.length > 1
+                    ? `Ledere: ${norwegianNameList(tiedLeaders.map((participant) => participant.name))}`
+                    : `Leder: ${leader.name}`}
+              </span>
+            )}
           </div>
         </div>
         <RowingSupporter />

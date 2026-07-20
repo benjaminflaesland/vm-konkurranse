@@ -6,6 +6,7 @@ import {
   computeScores,
   emptyFasit,
   mergeLiveResults,
+  rankByScore,
   teamMatch,
 } from "../shared/competition.js";
 
@@ -39,6 +40,20 @@ describe("competition domain", () => {
       ["Brasil", "Norge", "Spania"],
       ["Norge", "Brasil", "Frankrike"],
     )).toEqual(["bonus", "bonus", "miss"]);
+  });
+
+  it("gir samme plassering ved poenglikhet og hopper over neste plass", () => {
+    expect(rankByScore([
+      { id: "d", name: "Dina", total: 8 },
+      { id: "b", name: "Bea", total: 10 },
+      { id: "a", name: "Ada", total: 10 },
+      { id: "c", name: "Cecilie", total: 9 },
+    ]).map(({ name, rank }) => [name, rank])).toEqual([
+      ["Ada", 1],
+      ["Bea", 1],
+      ["Cecilie", 3],
+      ["Dina", 4],
+    ]);
   });
 
   it("teller tredjeplasser bare én gang og dekker alle poengtyper", () => {

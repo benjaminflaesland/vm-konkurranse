@@ -141,6 +141,24 @@ export function quizAnswerMatches(actual, pick, index) {
     && actualWords[actualWords.length - 1] === pickedWords[pickedWords.length - 1];
 }
 
+export function rankByScore(items, getScore = (item) => item.total) {
+  let previousScore = null;
+  let currentRank = 0;
+  return [...(items || [])]
+    .sort((a, b) => {
+      const scoreDifference = (Number(getScore(b)) || 0) - (Number(getScore(a)) || 0);
+      if (scoreDifference) return scoreDifference;
+      const nameDifference = String(a?.name || "").localeCompare(String(b?.name || ""), "nb-NO");
+      return nameDifference || String(a?.id || "").localeCompare(String(b?.id || ""), "nb-NO");
+    })
+    .map((item, index) => {
+      const score = Number(getScore(item)) || 0;
+      if (index === 0 || score !== previousScore) currentRank = index + 1;
+      previousScore = score;
+      return { ...item, rank: currentRank };
+    });
+}
+
 export function toNorwegian(name) {
   const cleanName = String(name || "").replace(/\u00a0/g, " ").trim();
   return TEAM_NAME_MAP[cleanName.toLowerCase()] || canonicalTeam(cleanName);

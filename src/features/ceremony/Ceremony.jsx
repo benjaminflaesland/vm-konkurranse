@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { rankByScore } from "../../../shared/competition.js";
 import worldCupPrizeSilhouette from "../../assets/world-cup-prize-silhouette.webp";
 import { CrownIcon } from "../../components/CrownIcon.jsx";
 import { useIsMobile } from "../../hooks/useMediaQuery.js";
@@ -35,9 +36,16 @@ function cumulative(participant, roundIndex) {
 }
 
 function rankingAt(participants, roundIndex) {
-  return [...participants]
-    .map((participant) => ({ ...participant, total: cumulative(participant, roundIndex) }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  return rankByScore(
+    participants.map((participant) => ({ ...participant, total: cumulative(participant, roundIndex) })),
+    (participant) => participant.total,
+  );
+}
+
+function norwegianNameList(names) {
+  if (names.length < 2) return names[0] || "";
+  if (names.length === 2) return `${names[0]} og ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} og ${names[names.length - 1]}`;
 }
 
 function LockIcon({ size = 16 }) {
@@ -295,9 +303,9 @@ function BumpChart({ participants, step }) {
           const lastRoundIdx = visible - 1;
           const rankNow = rankOf(p.id, lastRoundIdx);
           const y = yFor(rankNow);
-          const overallRank = finalRanking.findIndex((r) => r.id === p.id);
+          const overallRank = finalRanking.find((rankedParticipant) => rankedParticipant.id === p.id)?.rank || 1;
           const scoreNow = cumulative(p, lastRoundIdx);
-          const isLeader = overallRank === 0;
+          const isLeader = overallRank === 1;
           const crownSize = isMobile ? 15 : 16;
           const labelX = xFor(lastRoundIdx) + 16;
           return (
@@ -309,7 +317,7 @@ function BumpChart({ participants, step }) {
                 fontWeight="700" fontFamily="'Inter', sans-serif">
                 {firstName(p.name)}
                 <tspan style={{ fill: "var(--text3)" }} fontSize={isMobile ? 12 : 11} fontWeight="600" dx="5">
-                  #{overallRank + 1} · {scoreNow} p
+                  #{overallRank} · {scoreNow} p
                 </tspan>
               </text>
             </g>
@@ -331,7 +339,7 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
     shown: p.base + (revealedIds.has(p.id) ? p.bonus || 0 : 0),
     bonusShown: revealedIds.has(p.id),
   }));
-  const sorted = [...current].sort((a, b) => b.shown - a.shown || a.name.localeCompare(b.name));
+  const sorted = rankByScore(current, (participant) => participant.shown);
   const justRevealed = revealed > 0 ? bonusOrder[revealed - 1] : null;
   const rowH = Math.min(56, Math.max(36, 500 / Math.max(sorted.length, 1)));
 
@@ -353,7 +361,7 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
               borderLeft: `5px solid ${p.color}`,
               background: p.bonusShown ? "var(--bg4)" : "var(--bg0)",
             }}>
-            <span style={S.bonusRank}>{i + 1}</span>
+            <span style={S.bonusRank}>{p.rank}</span>
             <span style={S.bonusName}>{firstName(p.name)}</span>
             {p.bonusShown && (p.bonus || 0) > 0 && (
               <span className="bonus-star" style={S.bonusStar}>+{p.bonus}</span>
@@ -371,29 +379,55 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
 // ─────────────────────────────────────────────
 function WinnerScreen({ finalBase }) {
   const isMobile = useIsMobile(700);
-  const sorted = [...finalBase]
-    .map((p) => ({ ...p, total: p.base + (p.bonus || 0) }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-  const [w, second, third] = sorted;
+  const sorted = rankByScore(
+    finalBase.map((p) => ({ ...p, total: p.base + (p.bonus || 0) })),
+    (participant) => participant.total,
+  );
+  const winners = sorted.filter((participant) => participant.rank === 1);
+  const sharedFirst = winners.length > 1;
+  const topThree = sorted.slice(0, 3);
+  const podiumEntries = sharedFirst
+    ? topThree
+    : [topThree[1], topThree[0], topThree[2]].filter(Boolean);
+  const winnerNames = winners.map((participant) => firstName(participant.name));
+  const winnerLabel = winnerNames.length > 3
+    ? `${winnerNames.length} delte vinnere`
+    : norwegianNameList(winnerNames);
+  const winnerScore = winners[0]?.total;
+  const podiumHeight = (rank) => isMobile
+    ? ({ 1: 150, 2: 105, 3: 78 }[rank] || 78)
+    : ({ 1: 200, 2: 140, 3: 100 }[rank] || 100);
 
   return (
     <div style={S.winnerCard}>
       <Confetti />
       <div style={{ ...S.podiumWrap, ...(isMobile ? { gap: 8, minHeight: 220, marginBottom: 18 } : {}) }}>
-        {second && <Podium place={2} p={second} height={isMobile ? 105 : 140} delay={0.2} compact={isMobile} />}
-        {w && <Podium place={1} p={w} height={isMobile ? 150 : 200} delay={0} winner compact={isMobile} />}
-        {third && <Podium place={3} p={third} height={isMobile ? 78 : 100} delay={0.4} compact={isMobile} />}
+        {podiumEntries.map((participant, index) => (
+          <Podium
+            key={participant.id}
+            place={participant.rank}
+            p={participant}
+            height={podiumHeight(participant.rank)}
+            delay={index * 0.2}
+            winner={participant.rank === 1}
+            compact={isMobile}
+          />
+        ))}
       </div>
       <div style={{ ...S.winnerTitle, ...(isMobile ? { fontSize: 25 } : {}) }}>
         <CrownIcon className="ceremony-winner-crown" size={isMobile ? 22 : 26} />
-        {firstName(w?.name)}
+        {winnerLabel}
       </div>
-      <div style={{ ...S.winnerSub, textAlign: "center" }}>Avdelingens fremste fotballekspert · {w?.total} poeng</div>
+      <div style={{ ...S.winnerSub, textAlign: "center" }}>
+        {sharedFirst
+          ? `Deler førsteplassen · ${winnerScore} poeng hver`
+          : `Avdelingens fremste fotballekspert · ${winnerScore} poeng`}
+      </div>
       {sorted.length > 3 && (
         <ol style={S.restList}>
-          {sorted.slice(3).map((p, i) => (
+          {sorted.slice(3).map((p) => (
             <li key={p.id} style={S.restItem}>
-              <span style={S.restRank}>{i + 4}.</span>
+              <span style={S.restRank}>{p.rank}.</span>
               <span style={{ ...S.dot, background: p.color }} />
               <span style={{ flex: 1 }}>{firstName(p.name)}</span>
               <span style={{ fontWeight: 800, color: "#00DC64" }}>{p.total} p</span>

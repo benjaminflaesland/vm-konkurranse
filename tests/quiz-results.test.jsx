@@ -79,8 +79,8 @@ describe("offentlig VM-quizfasit", () => {
     fireEvent.click(nextButton);
     expect(within(ceremonyDialog).getByRole("heading", { name: "16-delsfinalene" })).toBeInTheDocument();
     expect(within(ceremonyDialog).queryByText("16-delsfinaler")).not.toBeInTheDocument();
-    expect(within(ceremonyDialog).getAllByText(/#\d+ · \d+ p/)).toHaveLength(2);
-    expect(ceremonyDialog.querySelectorAll(".ceremony-leader-crown")).toHaveLength(1);
+    expect(within(ceremonyDialog).getAllByText("#1 · 0 p")).toHaveLength(2);
+    expect(ceremonyDialog.querySelectorAll(".ceremony-leader-crown")).toHaveLength(2);
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Lukk kåringen" }));
     expect(screen.queryByRole("dialog", { name: "VM-kåring" })).not.toBeInTheDocument();
 
@@ -95,6 +95,9 @@ describe("offentlig VM-quizfasit", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Stilling" }));
     const participantRow = await screen.findByRole("button", { name: /Ada/ });
+    const tiedParticipantRow = await screen.findByRole("button", { name: /Bea/ });
+    expect(participantRow).toHaveTextContent(/^1/);
+    expect(tiedParticipantRow).toHaveTextContent(/^1/);
     fireEvent.click(participantRow);
 
     const quizHeading = await screen.findByText("VM-quiz");
@@ -197,6 +200,8 @@ describe("offentlig VM-quizfasit", () => {
     }
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Kår vinner ›" }));
     expect(within(ceremonyDialog).getByText("Vinner!")).toBeInTheDocument();
+    expect(within(ceremonyDialog).getByText("16 delte vinnere")).toBeInTheDocument();
+    expect(within(ceremonyDialog).getByText("Deler førsteplassen · 1 poeng hver")).toBeInTheDocument();
     expect(within(ceremonyDialog).queryByRole("button", { name: "Neste ›" })).not.toBeInTheDocument();
     expect(within(ceremonyDialog).queryByRole("button", { name: "Kår vinner ›" })).not.toBeInTheDocument();
   });
