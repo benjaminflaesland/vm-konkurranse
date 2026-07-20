@@ -50,6 +50,18 @@ const ROUNDS = [
 
 const ALL_TEAMS = GROUP_KEYS.flatMap((g) => GROUPS[g]);
 
+const PUBLIC_TABS = [
+  { mode: "hjem", label: "Hjem", mobileLabel: "Hjem" },
+  { mode: "stilling", label: "Stilling", mobileLabel: "Stilling" },
+  { mode: "fasit-view", label: "Resultat", mobileLabel: "Resultat" },
+  { mode: "vei-vm", label: "Veien til VM", mobileLabel: "Veien" },
+  { mode: "present", label: "Kåring", mobileLabel: "Kåring" },
+];
+const ADMIN_TABS = [
+  { mode: "deltakere", label: "Deltakere" },
+  { mode: "fasit", label: "Rediger resultat" },
+];
+
 // The World Cup 2026 knockout draw is not a simple numeric bracket. The template
 // fixes which group winners / runners-up / third-place teams meet in each
 // 16-delsfinale, and how every round feeds the next. We keep that whole
@@ -458,6 +470,21 @@ function LockIcon({ size = 16 }) {
       <rect x="4.75" y="10" width="14.5" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
       <path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       <path d="M12 14.25v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NavigationIcon({ mode, size = 18 }) {
+  const paths = {
+    hjem: <><path d="M3.5 10.5 12 3.8l8.5 6.7" /><path d="M5.7 9.2v10h12.6v-10M9.3 19.2v-5.8h5.4v5.8" /></>,
+    stilling: <><path d="M5 19v-5.5h3V19H5ZM10.5 19V9h3v10h-3ZM16 19V5h3v14h-3Z" /><path d="M3.5 19.2h17" /></>,
+    "fasit-view": <><path d="M6 3.8h12v16.4H6z" /><path d="M9 8h6M9 12h2.5M9 16l1.6 1.5L15 13" /></>,
+    "vei-vm": <><circle cx="6" cy="17.5" r="2.2" /><circle cx="18" cy="6.5" r="2.2" /><path d="M8.2 17.5h2.1c3.8 0 1.8-7.6 5.5-8.7" /></>,
+    present: <><path d="M7 4h10v3.8a5 5 0 0 1-10 0V4Z" /><path d="M7 5.5H4.5a2 2 0 0 0 2 3.5H7M17 5.5h2.5a2 2 0 0 1-2 3.5H17M12 12.8v3.4M8.5 20h7M9.5 20c.2-1.9 1-3 2.5-3.8 1.5.8 2.3 1.9 2.5 3.8" /></>,
+  };
+  return (
+    <svg className="mobile-nav-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[mode]}</g>
     </svg>
   );
 }
@@ -1332,9 +1359,7 @@ export default function App() {
     );
   }
 
-  const publicTabs = [["hjem", "Hjem"], ["stilling", "Stilling"], ["fasit-view", "Resultat"], ["vei-vm", "Veien til VM"], ["present", "Kåring"]];
-  const adminTabs = [["deltakere", "Deltakere"], ["fasit", "Rediger resultat"]];
-  const tabs = isAdmin ? [...publicTabs, ...adminTabs] : publicTabs;
+  const tabs = isAdmin ? [...PUBLIC_TABS, ...ADMIN_TABS] : PUBLIC_TABS;
   const bonusPublished = settings.ceremonyUnlocked;
   const publicSelfGuided = !isAdmin && settings.ceremonyUnlocked;
   const activeCeremony = publicSelfGuided
@@ -1408,21 +1433,41 @@ export default function App() {
               }} />
             </div>
           </button>
-          <div className="no-scrollbar" style={{
+          <nav aria-label="Hovednavigasjon" className={`primary-nav${isMobile ? " primary-nav--mobile" : ""}`} style={{
             ...S.modeToggle,
             marginLeft: isCompactHeader && !isMobile ? "auto" : 0,
             ...(!isCompactHeader ? { justifySelf: "center" } : {}),
-            ...(isMobile ? { order: 3, flexBasis: "100%", maxWidth: "100%", overflowX: "auto", justifyContent: "flex-start" } : {}),
+            ...(isMobile ? S.mobileModeToggle : {}),
           }}>
-            {tabs.map(([m, label]) => (
-              <button key={m} type="button" aria-current={mode === m ? "page" : undefined} onClick={() => setMode(m)}
-                disabled={m === "present" && (isAdmin || settings.ceremonyUnlocked) && participants.filter((p) => !isExcludedFromCompetition(p)).length < 2}
-                style={{ ...S.modeBtn, ...(mode === m ? S.modeBtnActive : {}) }}>
-                {m === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.tabLock}><LockIcon size={12} /></span>}
-                {label}
+            {(isMobile ? PUBLIC_TABS : tabs).map(({ mode: tabMode, label, mobileLabel }) => (
+              <button key={tabMode} type="button" aria-label={label} aria-current={mode === tabMode ? "page" : undefined} onClick={() => setMode(tabMode)}
+                disabled={tabMode === "present" && (isAdmin || settings.ceremonyUnlocked) && participants.filter((p) => !isExcludedFromCompetition(p)).length < 2}
+                style={{ ...S.modeBtn, ...(isMobile ? S.mobileModeBtn : {}), ...(mode === tabMode ? S.modeBtnActive : {}) }}>
+                {isMobile ? (
+                  <>
+                    <NavigationIcon mode={tabMode} />
+                    <span className="mobile-nav-label">{mobileLabel}</span>
+                    {tabMode === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.mobileTabLock}><LockIcon size={8} /></span>}
+                  </>
+                ) : (
+                  <>
+                    {tabMode === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.tabLock}><LockIcon size={12} /></span>}
+                    {label}
+                  </>
+                )}
               </button>
             ))}
-          </div>
+          </nav>
+          {isMobile && isAdmin && (
+            <nav aria-label="Adminnavigasjon" className="mobile-admin-nav" style={S.mobileAdminNav}>
+              {ADMIN_TABS.map(({ mode: tabMode, label }) => (
+                <button key={tabMode} type="button" aria-current={mode === tabMode ? "page" : undefined}
+                  onClick={() => setMode(tabMode)} style={{ ...S.mobileAdminBtn, ...(mode === tabMode ? S.modeBtnActive : {}) }}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8, ...(!isCompactHeader ? { justifySelf: "end", minWidth: 0 } : {}) }}>
             {isAdmin && mode === "present" && (
               <button
@@ -3052,13 +3097,35 @@ const S = {
   title: { fontSize: 24, fontWeight: 900, letterSpacing: -0.5, color: "var(--text1)" },
   subtitle: { fontSize: 11, color: "var(--text3)", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600 },
   modeToggle: { display: "flex", gap: 3, background: "var(--bg3)", padding: 5, borderRadius: 50 },
+  mobileModeToggle: {
+    order: 3, flexBasis: "100%", width: "100%", maxWidth: "100%", minWidth: 0,
+    display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 2,
+    overflow: "hidden", padding: 4, borderRadius: 16,
+  },
   modeBtn: {
     border: "none", background: "transparent", color: "var(--text3)",
     padding: "8px 13px", borderRadius: 50, cursor: "pointer", fontSize: 14, fontWeight: 700,
     transition: "all .2s", whiteSpace: "nowrap", flexShrink: 0,
   },
+  mobileModeBtn: {
+    position: "relative", minWidth: 0, minHeight: 50, padding: "6px 2px 5px", borderRadius: 12,
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+    overflow: "hidden", fontSize: 10, lineHeight: 1.05, whiteSpace: "normal",
+  },
   modeBtnActive: { background: "var(--btn-active-bg)", color: "var(--btn-active-color)" },
   tabLock: { display: "inline-flex", verticalAlign: "-2px", marginRight: 5, opacity: 0.8 },
+  mobileTabLock: {
+    position: "absolute", top: 4, right: "calc(50% - 18px)", display: "inline-flex",
+    padding: 2, borderRadius: "50%", background: "var(--bg3)", color: "var(--text3)",
+  },
+  mobileAdminNav: {
+    order: 2, flexBasis: "100%", width: "100%", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 4, padding: 4, borderRadius: 12, background: "var(--bg4)",
+  },
+  mobileAdminBtn: {
+    minWidth: 0, border: 0, borderRadius: 9, padding: "8px 6px", background: "transparent",
+    color: "var(--text3)", fontSize: 11, fontWeight: 750, cursor: "pointer",
+  },
   ceremonyToggle: {
     background: "transparent", color: "#D8B15A", border: "1px solid #D8B15A66", padding: "6px 10px",
     borderRadius: 20, fontSize: 12, fontWeight: 750, cursor: "pointer", whiteSpace: "nowrap",

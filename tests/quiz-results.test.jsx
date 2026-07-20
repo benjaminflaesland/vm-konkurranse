@@ -244,6 +244,14 @@ describe("offentlig VM-quizfasit", () => {
     const { default: App } = await import("../src/App.jsx");
     render(<App />);
 
+    const mobileNav = await screen.findByRole("navigation", { name: "Hovednavigasjon" });
+    expect(within(mobileNav).getAllByRole("button")).toHaveLength(5);
+    expect(mobileNav.style.gridTemplateColumns).toBe("repeat(5, minmax(0, 1fr))");
+    expect(mobileNav.style.overflow).toBe("hidden");
+    expect(within(mobileNav).getByText("Veien")).toBeInTheDocument();
+    expect(within(mobileNav).queryByText("Veien til VM")).not.toBeInTheDocument();
+    expect(mobileNav.querySelectorAll(".mobile-nav-icon")).toHaveLength(5);
+
     const ceremonyDialog = await screen.findByRole("dialog", { name: "VM-kåring" });
     fireEvent.click(await within(ceremonyDialog).findByRole("button", { name: "Start kåringen" }));
     for (let index = 0; index < 5; index += 1) {
