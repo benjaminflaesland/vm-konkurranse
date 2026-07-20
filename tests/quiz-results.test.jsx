@@ -250,7 +250,7 @@ describe("offentlig VM-quizfasit", () => {
     expect(mobileNav.style.overflow).toBe("hidden");
     expect(within(mobileNav).getByText("Veien")).toBeInTheDocument();
     expect(within(mobileNav).queryByText("Veien til VM")).not.toBeInTheDocument();
-    expect(mobileNav.querySelectorAll(".mobile-nav-icon")).toHaveLength(5);
+    expect(mobileNav.querySelectorAll(".nav-icon")).toHaveLength(5);
 
     const ceremonyDialog = await screen.findByRole("dialog", { name: "VM-kåring" });
     fireEvent.click(await within(ceremonyDialog).findByRole("button", { name: "Start kåringen" }));
