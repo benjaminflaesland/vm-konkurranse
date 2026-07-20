@@ -125,7 +125,7 @@ const QUIZ_QUESTIONS = [
   "Totalt antall mål i VM (±5 godtas)?",
   "Taper England i straffekonkurranse? (Ja/Nei)",
   "Antall røde kort totalt?",
-  "Laget med færrest poeng?",
+  "Laget med færrest poeng (dårligst målforskjell avgjør ved likhet)?",
   "Antall straffekonkurranser?",
   "Finaledommerens land?",
   "Blir Ronaldo toppscorer for Portugal? (Ja/Nei)",
