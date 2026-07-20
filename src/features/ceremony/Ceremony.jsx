@@ -397,7 +397,7 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
           <span key={justRevealedBatch.map((participant) => participant.id).join(":")}
             className="bonus-pop ceremony-bonus-reveal-batch" style={{
             ...S.bonusPop,
-            ...(isMobile ? { padding: "7px 12px", fontSize: 13 } : {}),
+            ...(isMobile ? { width: "100%", padding: "7px 12px", fontSize: 13 } : {}),
           }} aria-live="polite">
             {justRevealedBatch.map((participant) => (
               <span key={participant.id} className="ceremony-bonus-reveal-item" style={S.bonusPopItem}>

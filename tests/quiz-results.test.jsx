@@ -259,7 +259,12 @@ describe("offentlig VM-quizfasit", () => {
     expect(ceremonyDialog.querySelector(".ceremony-bonus-list")?.style.overflowY).toBe("auto");
     expect(ceremonyDialog.querySelector(".ceremony-bonus-name")?.style.textOverflow).toBe("ellipsis");
 
-    for (let index = 0; index < 4; index += 1) {
+    fireEvent.click(within(ceremonyDialog).getByRole("button", { name: /Vis neste/ }));
+    const mobileRevealBatch = ceremonyDialog.querySelector(".ceremony-bonus-reveal-batch");
+    expect(ceremonyDialog.querySelectorAll(".ceremony-bonus-reveal-item")).toHaveLength(4);
+    expect(mobileRevealBatch?.style.width).toBe("100%");
+    expect(mobileRevealBatch?.style.flexWrap).toBe("wrap");
+    for (let index = 0; index < 3; index += 1) {
       fireEvent.click(within(ceremonyDialog).getByRole("button", { name: /Vis neste/ }));
     }
     expect(ceremonyDialog.querySelectorAll(".ceremony-bonus-reveal-item")).toHaveLength(1);
