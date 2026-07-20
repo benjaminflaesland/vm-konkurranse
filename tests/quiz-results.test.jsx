@@ -183,7 +183,13 @@ describe("offentlig VM-quizfasit", () => {
 
     const ceremonyDialog = await screen.findByRole("dialog", { name: "VM-kåring" });
     fireEvent.click(await within(ceremonyDialog).findByRole("button", { name: "Start kåringen" }));
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 3; index += 1) {
+      fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
+    }
+    const guideEnd = Number(ceremonyDialog.querySelector(".ceremony-rank-guide")?.getAttribute("x2"));
+    const firstLabelStart = Number(ceremonyDialog.querySelector(".ceremony-participant-label")?.getAttribute("x"));
+    expect(guideEnd).toBeLessThan(firstLabelStart);
+    for (let index = 0; index < 2; index += 1) {
       fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
     }
     fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Bonusrunde ›" }));
@@ -207,5 +213,55 @@ describe("offentlig VM-quizfasit", () => {
     expect(ceremonyDialog.querySelector(".ceremony-winner-rest")?.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
     expect(within(ceremonyDialog).queryByRole("button", { name: "Neste ›" })).not.toBeInTheDocument();
     expect(within(ceremonyDialog).queryByRole("button", { name: "Kår vinner ›" })).not.toBeInTheDocument();
+  });
+
+  it("holder navigasjon og deltakernavn innenfor mobilvisningen", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query) => ({
+      matches: query.includes("max-width"),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    })));
+    const publicEnvelope = winnerEnvelope();
+    publicEnvelope.data.participants = Array.from({ length: 13 }, (_, index) => ({
+      ...publicEnvelope.data.participants[0],
+      id: `mobile-participant-${index + 1}`,
+      name: index === 0 ? "Ekstremtlangtdeltakernavn Nordmann" : `Deltaker${index + 1} Nordmann`,
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (url.endsWith("/auth")) return response(200, { authenticated: false });
+      if (url.endsWith("/data")) return response(200, publicEnvelope);
+      throw new Error(`Uventet kall: ${url}`);
+    }));
+
+    const { default: App } = await import("../src/App.jsx");
+    render(<App />);
+
+    const ceremonyDialog = await screen.findByRole("dialog", { name: "VM-kåring" });
+    fireEvent.click(await within(ceremonyDialog).findByRole("button", { name: "Start kåringen" }));
+    for (let index = 0; index < 5; index += 1) {
+      fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
+    }
+    fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Bonusrunde ›" }));
+
+    const navigation = ceremonyDialog.querySelector(".ceremony-present-nav");
+    const nextButton = within(ceremonyDialog).getByRole("button", { name: "Vis neste 4 ›" });
+    expect(navigation?.style.gridTemplateAreas).toBe('"phase phase" "back next"');
+    expect(nextButton.style.width).toBe("100%");
+    expect(nextButton.style.whiteSpace).toBe("nowrap");
+    expect(ceremonyDialog.querySelector(".ceremony-bonus-list")?.style.overflowY).toBe("auto");
+    expect(ceremonyDialog.querySelector(".ceremony-bonus-name")?.style.textOverflow).toBe("ellipsis");
+
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.click(within(ceremonyDialog).getByRole("button", { name: /Vis neste/ }));
+    }
+    fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Kår vinner ›" }));
+    expect(ceremonyDialog.querySelector(".ceremony-podium-name")?.style.textOverflow).toBe("ellipsis");
+    expect(ceremonyDialog.querySelector(".ceremony-rest-name")?.style.textOverflow).toBe("ellipsis");
+    expect(ceremonyDialog.querySelector(".ceremony-winner-rest")?.style.gridTemplateColumns).toBe("1fr");
   });
 });

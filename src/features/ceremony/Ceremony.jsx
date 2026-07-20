@@ -111,6 +111,7 @@ function CeremonyIntro({ onStart }) {
 }
 
 function Present({ participants, ceremony, setCeremony, isAdmin, isLive, selfGuided = false, standalone = false, onExit }) {
+  const isMobile = useIsMobile(700);
   const competingParticipants = participants.filter((p) => !isExcludedFromCompetition(p));
   const normalizedCeremony = normalizeCeremony(ceremony);
   const { phase, step } = normalizedCeremony;
@@ -176,6 +177,20 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, selfGui
   const phaseLabel = phase === "rounds" ? ROUNDS[step].label
     : phase === "bonus" ? `${BONUS_LABEL} (${bonusRevealed}/${competingParticipants.length})`
     : "Vinner!";
+  const showPhaseLabel = phase !== "rounds" || (isAdmin && !isLive);
+  const mobileNav = isMobile ? {
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateAreas: showPhaseLabel ? '"phase phase" "back next"' : '"back next"',
+    gap: "8px 10px",
+    marginTop: 8,
+  } : {};
+  const mobileNavButton = isMobile ? {
+    width: "100%",
+    minWidth: 0,
+    padding: "11px 12px",
+    fontSize: 13,
+    whiteSpace: "nowrap",
+  } : {};
 
   return (
     <div className={`ceremony-present${standalone ? " ceremony-present--standalone" : ""}`} style={S.presentWrap}>
@@ -186,14 +201,38 @@ function Present({ participants, ceremony, setCeremony, isAdmin, isLive, selfGui
       {phase === "winner" && <WinnerScreen finalBase={finalBase} />}
 
       {canControl ? (
-        <div style={S.presentNav}>
-          <button onClick={prev} disabled={phase === "rounds" && step === 0} style={{ ...S.navBtn, justifySelf: "start" }}>‹ Tilbake</button>
-          <div style={S.phaseLabel}>
+        <div className="ceremony-present-nav" style={{ ...S.presentNav, ...mobileNav }}>
+          <button type="button" onClick={prev} disabled={phase === "rounds" && step === 0} style={{
+            ...S.navBtn,
+            justifySelf: "start",
+            ...(isMobile ? { ...mobileNavButton, gridArea: "back" } : {}),
+          }}>‹ Tilbake</button>
+          <div className="ceremony-phase-label" style={{
+            ...S.phaseLabel,
+            ...(isMobile && !showPhaseLabel ? { display: "none" } : {}),
+            ...(isMobile && showPhaseLabel ? {
+              gridArea: "phase",
+              minWidth: 0,
+              fontSize: 14,
+              lineHeight: 1.2,
+              justifyContent: "center",
+              flexWrap: "wrap",
+            } : {}),
+          }}>
             {isAdmin && !isLive && <span style={S.previewLabel}>Forhåndsvisning</span>}
             {phase !== "rounds" ? phaseLabel : null}
           </div>
-          {phase === "winner" ? <span aria-hidden="true" /> : (
-            <button onClick={next} style={{ ...S.navBtn, ...S.navBtnPrimary }}>
+          {phase === "winner" ? <span aria-hidden="true" style={isMobile ? { gridArea: "next" } : undefined} /> : (
+            <button type="button" onClick={next} style={{
+              ...S.navBtn,
+              ...S.navBtnPrimary,
+              ...(isMobile ? {
+                ...mobileNavButton,
+                gridArea: "next",
+                justifySelf: "stretch",
+                borderRadius: 12,
+              } : {}),
+            }}>
               {phase === "rounds" && step === ROUNDS.length - 1 ? "Bonusrunde ›"
                 : phase === "bonus" && bonusRevealed === competingParticipants.length ? "Kår vinner ›"
                 : phase === "bonus" ? `Vis neste ${nextBonusRevealCount} ›`
@@ -225,7 +264,7 @@ function BumpChart({ participants, step }) {
   // label beside its current endpoint makes the line-to-name mapping unambiguous
   // after positions swap between rounds.
   const padL = isMobile ? 44 : 32;
-  const padR = isMobile ? 142 : 220;
+  const padR = isMobile ? 190 : 220;
   const padT = 58, padB = 20;
   const chartH = Math.max(rowH * n, 300);
   const H = padT + chartH + padB;
@@ -257,9 +296,9 @@ function BumpChart({ participants, step }) {
       <svg className="ceremony-chart-svg" viewBox={`0 0 ${W} ${H}`} style={{ flex: "1 1 auto", minHeight: 0, width: "100%", height: "100%", display: "block" }}>
 
         {Array.from({ length: n }).map((_, rank) => (
-          <line key={rank}
+          <line key={rank} className="ceremony-rank-guide"
             x1={padL} y1={yFor(rank)}
-            x2={xFor(ROUNDS.length - 1) + 12} y2={yFor(rank)}
+            x2={xFor(step) + 12} y2={yFor(rank)}
             stroke="var(--border)" strokeWidth="1" />
         ))}
 
@@ -313,10 +352,10 @@ function BumpChart({ participants, step }) {
               {isLeader && (
                 <CrownIcon className="ceremony-leader-crown" size={crownSize} x={labelX} y={y - crownSize / 2 - 1} />
               )}
-              <text x={labelX + (isLeader ? crownSize + 4 : 0)} y={y + 5} style={{ fill: "var(--text1)" }} fontSize={isMobile ? 15 : 14}
+              <text className="ceremony-participant-label" x={labelX + (isLeader ? crownSize + 4 : 0)} y={y + 5} style={{ fill: "var(--text1)" }} fontSize={isMobile ? 13 : 14}
                 fontWeight="700" fontFamily="'Inter', sans-serif">
                 {firstName(p.name)}
-                <tspan style={{ fill: "var(--text3)" }} fontSize={isMobile ? 12 : 11} fontWeight="600" dx="5">
+                <tspan style={{ fill: "var(--text3)" }} fontSize={isMobile ? 10 : 11} fontWeight="600" dx="4">
                   #{overallRank} · {scoreNow} p
                 </tspan>
               </text>
@@ -333,6 +372,7 @@ function BumpChart({ participants, step }) {
 // BONUS REVEAL
 // ─────────────────────────────────────────────
 function BonusReveal({ finalBase, bonusOrder, revealed }) {
+  const isMobile = useIsMobile(700);
   const revealedIds = new Set(bonusOrder.slice(0, revealed).map((p) => p.id));
   const current = finalBase.map((p) => ({
     ...p,
@@ -344,8 +384,8 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
   const rowH = Math.min(56, Math.max(36, 500 / Math.max(sorted.length, 1)));
 
   return (
-    <div style={S.chartCard}>
-      <div style={S.bonusHeader}>
+    <div style={{ ...S.chartCard, ...(isMobile ? { padding: 12 } : {}) }}>
+      <div style={{ ...S.bonusHeader, ...(isMobile ? { fontSize: 20, marginBottom: 14 } : {}) }}>
         {BONUS_LABEL}
         {justRevealed && (
           <span key={justRevealed.id} className="bonus-pop" style={S.bonusPop}>
@@ -353,22 +393,27 @@ function BonusReveal({ finalBase, bonusOrder, revealed }) {
           </span>
         )}
       </div>
-      <div style={{ position: "relative", height: sorted.length * rowH + 8 }}>
-        {sorted.map((p, i) => (
-          <div key={p.id}
-            style={{
-              ...S.bonusRow, top: i * rowH, height: rowH - 7,
-              borderLeft: `5px solid ${p.color}`,
-              background: p.bonusShown ? "var(--bg4)" : "var(--bg0)",
-            }}>
-            <span style={S.bonusRank}>{p.rank}</span>
-            <span style={S.bonusName}>{firstName(p.name)}</span>
-            {p.bonusShown && (p.bonus || 0) > 0 && (
-              <span className="bonus-star" style={S.bonusStar}>+{p.bonus}</span>
-            )}
-            <span style={S.bonusScore}>{p.shown}</span>
-          </div>
-        ))}
+      <div className="ceremony-bonus-list" style={S.bonusList}>
+        <div style={{ position: "relative", height: sorted.length * rowH + 8 }}>
+          {sorted.map((p, i) => (
+            <div key={p.id}
+              style={{
+                ...S.bonusRow,
+                ...(isMobile ? { gap: 8, padding: "0 10px" } : {}),
+                top: i * rowH,
+                height: rowH - 7,
+                borderLeft: `5px solid ${p.color}`,
+                background: p.bonusShown ? "var(--bg4)" : "var(--bg0)",
+              }}>
+              <span style={{ ...S.bonusRank, ...(isMobile ? { width: 24, fontSize: 14 } : {}) }}>{p.rank}</span>
+              <span className="ceremony-bonus-name" style={{ ...S.bonusName, ...(isMobile ? { fontSize: 15 } : {}) }}>{firstName(p.name)}</span>
+              {p.bonusShown && (p.bonus || 0) > 0 && (
+                <span className="bonus-star" style={S.bonusStar}>+{p.bonus}</span>
+              )}
+              <span style={{ ...S.bonusScore, ...(isMobile ? { fontSize: 18, minWidth: 36 } : {}) }}>{p.shown}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -433,7 +478,10 @@ function WinnerScreen({ finalBase }) {
           />
         ))}
       </div>
-      <div style={{ ...S.winnerTitle, ...(isMobile ? { fontSize: 25 } : {}) }}>
+      <div style={{
+        ...S.winnerTitle,
+        ...(isMobile ? { width: "100%", padding: "0 4px", fontSize: 22, lineHeight: 1.15, flexWrap: "wrap" } : {}),
+      }}>
         <CrownIcon className="ceremony-winner-crown" size={isMobile ? 22 : 26} />
         {winnerLabel}
       </div>
@@ -463,8 +511,8 @@ function WinnerScreen({ finalBase }) {
             }}>
               <span style={S.restRank}>{p.rank}.</span>
               <span style={{ ...S.dot, background: p.color }} />
-              <span style={{ flex: 1 }}>{firstName(p.name)}</span>
-              <span style={{ fontWeight: 800, color: "#00DC64" }}>{p.total} p</span>
+              <span className="ceremony-rest-name" style={S.restName}>{firstName(p.name)}</span>
+              <span style={{ flexShrink: 0, fontWeight: 800, color: "#00DC64" }}>{p.total} p</span>
             </li>
           ))}
         </ol>
@@ -474,18 +522,30 @@ function WinnerScreen({ finalBase }) {
 }
 
 function Podium({ place, p, height, delay, winner, compact = false }) {
+  const compactWidth = "clamp(70px, 23vw, 88px)";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animationDelay: `${delay}s` }}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0, animationDelay: `${delay}s` }}
       className="podium-rise">
       <div style={{ width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6,
         background: place === 1 ? "var(--accent)" : "var(--bg4)", color: place === 1 ? "var(--accent-fg)" : "var(--text2)",
         fontWeight: 800, fontSize: 16 }}>{place}</div>
-      <div style={{ fontWeight: 800, fontSize: compact ? (winner ? 17 : 14) : (winner ? 21 : 16), color: "var(--text1)", marginBottom: 2, textAlign: "center" }}>
+      <div className="ceremony-podium-name" style={{
+        width: compact ? compactWidth : 116,
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontWeight: 800,
+        fontSize: compact ? (winner ? 17 : 14) : (winner ? 21 : 16),
+        color: "var(--text1)",
+        marginBottom: 2,
+        textAlign: "center",
+      }}>
         {firstName(p.name)}
       </div>
       <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>{p.total} p</div>
       <div style={{
-        width: compact ? 88 : 116, height, borderRadius: "10px 10px 0 0",
+        width: compact ? compactWidth : 116, height, borderRadius: "10px 10px 0 0",
         background: `linear-gradient(180deg, ${p.color}, ${p.color}99)`,
         display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 8,
         boxShadow: winner ? `0 0 40px ${p.color}66` : "none",
@@ -526,18 +586,20 @@ const S = {
   navBtnPrimary: { background: "var(--accent)", color: "var(--accent-fg)", border: "none", borderRadius: 50, padding: "14px 20px", justifySelf: "end" },
   bonusHeader: { fontSize: 24, color: "var(--text1)", textAlign: "center", marginBottom: 22, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" },
   bonusPop: { background: "var(--accent)", color: "var(--accent-fg)", padding: "5px 16px", borderRadius: 50, fontSize: 15, fontWeight: 800 },
+  bonusList: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", paddingRight: 2 },
   bonusRow: { position: "absolute", left: 0, right: 0, display: "flex", alignItems: "center", gap: 12, padding: "0 16px", borderRadius: 12, transition: "top .8s cubic-bezier(.34,1.2,.64,1), background .4s", background: "var(--bg0)" },
   bonusRank: { width: 28, fontWeight: 800, color: "var(--text3)", fontSize: 15 },
-  bonusName: { flex: 1, fontSize: 16, fontWeight: 700, color: "var(--text1)" },
-  bonusStar: { color: "#F5A623", fontWeight: 800, fontSize: 14 },
-  bonusScore: { fontSize: 20, fontWeight: 900, color: "var(--text1)", minWidth: 44, textAlign: "right" },
+  bonusName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 16, fontWeight: 700, color: "var(--text1)" },
+  bonusStar: { flexShrink: 0, color: "#F5A623", fontWeight: 800, fontSize: 14 },
+  bonusScore: { flexShrink: 0, fontSize: 20, fontWeight: 900, color: "var(--text1)", minWidth: 44, textAlign: "right" },
   winnerCard: { flex: 1, background: "var(--bg3)", borderRadius: 20, padding: 24, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" },
   podiumWrap: { display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 16, marginBottom: 28, minHeight: 270 },
   winnerTitle: { display: "flex", alignItems: "center", justifyContent: "center", gap: 9, fontSize: 30, fontWeight: 900, color: "var(--text1)", textAlign: "center" },
   winnerSub: { fontSize: 14, color: "var(--text3)", marginTop: 6 },
   restList: { listStyle: "none", margin: "20px 0 0", padding: 0, width: "100%", maxWidth: 440 },
   restItem: { display: "flex", alignItems: "center", gap: 8, padding: "11px 0", fontSize: 15, borderBottom: "1px solid var(--border)" },
-  restRank: { width: 28, color: "var(--text3)", fontWeight: 800 },
+  restRank: { flexShrink: 0, width: 28, color: "var(--text3)", fontWeight: 800 },
+  restName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   confetti: { position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" },
 };
 
