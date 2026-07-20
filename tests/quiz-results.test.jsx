@@ -187,7 +187,9 @@ describe("offentlig VM-quizfasit", () => {
       fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
     }
     const guideEnd = Number(ceremonyDialog.querySelector(".ceremony-rank-guide")?.getAttribute("x2"));
+    const activeNodeCenter = Number(ceremonyDialog.querySelector(".ceremony-active-node")?.getAttribute("cx"));
     const firstLabelStart = Number(ceremonyDialog.querySelector(".ceremony-participant-label")?.getAttribute("x"));
+    expect(guideEnd).toBe(activeNodeCenter);
     expect(guideEnd).toBeLessThan(firstLabelStart);
     for (let index = 0; index < 2; index += 1) {
       fireEvent.click(within(ceremonyDialog).getByRole("button", { name: "Neste ›" }));
