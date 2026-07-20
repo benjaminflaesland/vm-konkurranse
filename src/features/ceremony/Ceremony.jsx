@@ -394,14 +394,33 @@ function WinnerScreen({ finalBase }) {
     ? `${winnerNames.length} delte vinnere`
     : norwegianNameList(winnerNames);
   const winnerScore = winners[0]?.total;
+  const crowded = sorted.length > 8;
   const podiumHeight = (rank) => isMobile
-    ? ({ 1: 150, 2: 105, 3: 78 }[rank] || 78)
-    : ({ 1: 200, 2: 140, 3: 100 }[rank] || 100);
+    ? ((crowded ? { 1: 120, 2: 90, 3: 65 } : { 1: 150, 2: 105, 3: 78 })[rank] || 65)
+    : ((crowded ? { 1: 150, 2: 105, 3: 75 } : { 1: 200, 2: 140, 3: 100 })[rank] || 75);
 
   return (
-    <div style={S.winnerCard}>
+    <div
+      className="ceremony-winner-card"
+      style={{
+        ...S.winnerCard,
+        ...(crowded ? {
+          justifyContent: "flex-start",
+          overflowY: "auto",
+          padding: isMobile ? 14 : 18,
+        } : {}),
+      }}>
       <Confetti />
-      <div style={{ ...S.podiumWrap, ...(isMobile ? { gap: 8, minHeight: 220, marginBottom: 18 } : {}) }}>
+      <div style={{
+        ...S.podiumWrap,
+        ...(isMobile ? { gap: 8, minHeight: 220, marginBottom: 18 } : {}),
+        ...(crowded ? {
+          gap: isMobile ? 6 : 12,
+          minHeight: isMobile ? 190 : 220,
+          marginBottom: 12,
+          flexShrink: 0,
+        } : {}),
+      }}>
         {podiumEntries.map((participant, index) => (
           <Podium
             key={participant.id}
@@ -424,9 +443,24 @@ function WinnerScreen({ finalBase }) {
           : `Avdelingens fremste fotballekspert · ${winnerScore} poeng`}
       </div>
       {sorted.length > 3 && (
-        <ol style={S.restList}>
+        <ol
+          className="ceremony-winner-rest"
+          style={{
+            ...S.restList,
+            ...(crowded ? {
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+              columnGap: 32,
+              maxWidth: isMobile ? 440 : 820,
+              marginTop: 12,
+              flexShrink: 0,
+            } : {}),
+          }}>
           {sorted.slice(3).map((p) => (
-            <li key={p.id} style={S.restItem}>
+            <li key={p.id} style={{
+              ...S.restItem,
+              ...(crowded ? { padding: isMobile ? "8px 0" : "7px 0", fontSize: isMobile ? 13 : 14 } : {}),
+            }}>
               <span style={S.restRank}>{p.rank}.</span>
               <span style={{ ...S.dot, background: p.color }} />
               <span style={{ flex: 1 }}>{firstName(p.name)}</span>

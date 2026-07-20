@@ -202,6 +202,9 @@ describe("offentlig VM-quizfasit", () => {
     expect(within(ceremonyDialog).getByText("Vinner!")).toBeInTheDocument();
     expect(within(ceremonyDialog).getByText("16 delte vinnere")).toBeInTheDocument();
     expect(within(ceremonyDialog).getByText("Deler førsteplassen · 1 poeng hver")).toBeInTheDocument();
+    expect(ceremonyDialog.querySelector(".ceremony-winner-card")?.style.justifyContent).toBe("flex-start");
+    expect(ceremonyDialog.querySelector(".ceremony-winner-card")?.style.overflowY).toBe("auto");
+    expect(ceremonyDialog.querySelector(".ceremony-winner-rest")?.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
     expect(within(ceremonyDialog).queryByRole("button", { name: "Neste ›" })).not.toBeInTheDocument();
     expect(within(ceremonyDialog).queryByRole("button", { name: "Kår vinner ›" })).not.toBeInTheDocument();
   });
