@@ -3,6 +3,7 @@ import {
   GROUPS,
   GROUP_KEYS,
   CELLS,
+  DEFAULT_QUIZ_RESULTS,
   POINTS,
   buildLiveFasitFromFeeds,
   canonicalTeam,
@@ -11,11 +12,14 @@ import {
   emptyFasit,
   liveResultsSignature,
   mergeLiveResults,
+  quizAnswerMatches,
+  rankByScore,
   recalculateParticipantScores,
   teamMatch,
   toNorwegian,
 } from "../shared/competition.js";
 import { Flag, codeOf } from "./components/Flag.jsx";
+import { CrownIcon } from "./components/CrownIcon.jsx";
 import {
   formatCountdown,
   pickNextNorwayGame,
@@ -45,6 +49,18 @@ const ROUNDS = [
 ];
 
 const ALL_TEAMS = GROUP_KEYS.flatMap((g) => GROUPS[g]);
+
+const PUBLIC_TABS = [
+  { mode: "hjem", label: "Hjem", mobileLabel: "Hjem" },
+  { mode: "stilling", label: "Stilling", mobileLabel: "Stilling" },
+  { mode: "fasit-view", label: "Resultat", mobileLabel: "Resultat" },
+  { mode: "vei-vm", label: "Veien til VM", mobileLabel: "Veien" },
+  { mode: "present", label: "Kåring", mobileLabel: "Kåring" },
+];
+const ADMIN_TABS = [
+  { mode: "deltakere", label: "Deltakere" },
+  { mode: "fasit", label: "Rediger resultat" },
+];
 
 // The World Cup 2026 knockout draw is not a simple numeric bracket. The template
 // fixes which group winners / runners-up / third-place teams meet in each
@@ -122,11 +138,33 @@ const QUIZ_QUESTIONS = [
   "Totalt antall mål i VM (±5 godtas)?",
   "Taper England i straffekonkurranse? (Ja/Nei)",
   "Antall røde kort totalt?",
-  "Laget med færrest poeng?",
+  "Laget med færrest poeng (dårligst målforskjell avgjør ved likhet)?",
   "Antall straffekonkurranser?",
   "Finaledommerens land?",
   "Blir Ronaldo toppscorer for Portugal? (Ja/Nei)",
 ];
+
+function quizResultItems(picks, fasit) {
+  return QUIZ_QUESTIONS.map((question, index) => {
+    const pick = picks?.quiz?.[index] || "";
+    const actual = fasit?.quiz?.[index] || "";
+    if (!pick && !actual) return null;
+
+    let status = "pending";
+    if (actual) status = quizAnswerMatches(actual, pick, index) ? "hit" : "miss";
+
+    return {
+      index,
+      label: `${index + 1}. ${question}`,
+      pick,
+      actual,
+      status,
+      points: status === "hit" ? POINTS.quiz : 0,
+      max: POINTS.quiz,
+      team: false,
+    };
+  }).filter(Boolean);
+}
 
 // ── Poengsystem (fra Excel-malen) ──
 const BRACKET_HIT_COLOR = "#16a34a";
@@ -170,6 +208,7 @@ const LAST_PUBLIC_MODE_KEY = "vm2026_last_public_mode";
 const SUPPORTER_ROW_ENDPOINT = "/.netlify/functions/supporter-row";
 const SUPPORTER_ROW_DEV_KEY = "vm2026_supporter_rows_dev";
 const SUPPORTER_COUNT_CACHE_KEY = "vm2026_supporter_count_cache";
+const CEREMONY_DISMISSED_PREFIX = "vm2026_ceremony_dismissed_";
 
 // Last total we showed, kept so a refresh or tab switch can paint it immediately
 // instead of dropping to a briefly-stale server read and climbing back up.
@@ -183,7 +222,7 @@ function readCachedSupporterCount() {
 }
 const PUBLIC_MODES = new Set(["hjem", "stilling", "fasit-view", "vei-vm", "present"]);
 const DEFAULT_CEREMONY = { phase: "rounds", step: 0, bonusRevealed: 0 };
-const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremony: DEFAULT_CEREMONY };
+const DEFAULT_SETTINGS = { ceremonyUnlocked: false, ceremonyReleaseId: null, ceremony: DEFAULT_CEREMONY };
 
 function normalizeCeremony(value) {
   const phase = ["rounds", "bonus", "winner"].includes(value?.phase) ? value.phase : DEFAULT_CEREMONY.phase;
@@ -202,6 +241,10 @@ function normalizeSettings(value) {
     ...value,
     ceremony: normalizeCeremony(value?.ceremony),
   };
+}
+
+function ceremonyDismissedKey(releaseId) {
+  return `${CEREMONY_DISMISSED_PREFIX}${releaseId || "legacy"}`;
 }
 
 const DEMO_DATA = import.meta.env.DEV ? (() => {
@@ -248,7 +291,7 @@ const DEMO_DATA = import.meta.env.DEV ? (() => {
     matches: { ...demoR16Winners, ...demoR8Winners, ...demoKvartWinners, 101: "Frankrike", 102: "Brasil" },
     sfLosers: { 101: "Portugal", 102: "Argentina" },
     bronse: "Argentina", finale: "Brasil",
-    quiz: ["3","Ronaldo","8","140","Nei","5","Panama","3","Brasil","Nei"],
+    quiz: [...DEFAULT_QUIZ_RESULTS],
   };
 
   return { participants, fasit };
@@ -277,9 +320,6 @@ const editableSnapshot = (participants, fasit, settings) => ({ participants, fas
 const snapshotSignature = (snapshot) => JSON.stringify(snapshot);
 
 // ── Hjelpere ──
-const norm = (s) =>
-  String(s || "").toLowerCase().replace(/[^a-zæøåäöü0-9]/g, "");
-
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
 const norwegianNameList = (names) => {
   if (names.length < 2) return names[0] || "";
@@ -412,17 +452,6 @@ function TrophyIcon({ size = 30 }) {
   );
 }
 
-// Flat gold crown (solid body + detached base bar) marking the current leader.
-function CrownIcon({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-      <path d="M4 7 L8.6 10.8 L12 4.6 L15.4 10.8 L20 7 L20 15 L4 15 Z"
-        fill="#EAB948" stroke="#EAB948" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" />
-      <rect x="5" y="17.3" width="14" height="2.9" rx="1.45" fill="#EAB948" />
-    </svg>
-  );
-}
-
 const BADGE_STYLE = {
   finale: { background: "var(--accent)", color: "var(--accent-fg)" },
   bronse: { background: "#C77B30", color: "#FFFFFF" },
@@ -441,6 +470,24 @@ function LockIcon({ size = 16 }) {
       <rect x="4.75" y="10" width="14.5" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
       <path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       <path d="M12 14.25v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const NAVIGATION_ICON_PATHS = {
+  hjem: <><path d="M3.5 10.5 12 3.8l8.5 6.7" /><path d="M5.7 9.2v10h12.6v-10M9.3 19.2v-5.8h5.4v5.8" /></>,
+  stilling: <><path d="M5 19v-5.5h3V19H5ZM10.5 19V9h3v10h-3ZM16 19V5h3v14h-3Z" /><path d="M3.5 19.2h17" /></>,
+  "fasit-view": <><path d="M6 3.8h12v16.4H6z" /><path d="M9 8h6M9 12h2.5M9 16l1.6 1.5L15 13" /></>,
+  "vei-vm": <><circle cx="6" cy="17.5" r="2.2" /><circle cx="18" cy="6.5" r="2.2" /><path d="M8.2 17.5h2.1c3.8 0 1.8-7.6 5.5-8.7" /></>,
+  present: <><path d="M7 4h10v3.8a5 5 0 0 1-10 0V4Z" /><path d="M7 5.5H4.5a2 2 0 0 0 2 3.5H7M17 5.5h2.5a2 2 0 0 1-2 3.5H17M12 12.8v3.4M8.5 20h7M9.5 20c.2-1.9 1-3 2.5-3.8 1.5.8 2.3 1.9 2.5 3.8" /></>,
+  deltakere: <><circle cx="9" cy="8" r="3" /><circle cx="17.2" cy="9.2" r="2.2" /><path d="M3.8 19c.4-3.3 2.1-5.2 5.2-5.2s4.8 1.9 5.2 5.2M15 14.3c2.8-.3 4.6 1.2 5.2 3.7" /></>,
+  fasit: <><path d="M5.5 4h8.7l4.3 4.3V20h-13z" /><path d="M14 4v4.5h4.5M9 15.8l1.2 1.2 5-5M9 10.5h3" /></>,
+};
+
+function NavigationIcon({ mode, size = 18 }) {
+  return (
+    <svg className="nav-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+      <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{NAVIGATION_ICON_PATHS[mode]}</g>
     </svg>
   );
 }
@@ -763,9 +810,10 @@ function cumulative(p, uptoIdx) {
   return s;
 }
 function rankingAt(participants, roundIdx) {
-  return [...participants]
-    .map((p) => ({ ...p, total: cumulative(p, roundIdx) }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  return rankByScore(
+    participants.map((p) => ({ ...p, total: cumulative(p, roundIdx) })),
+    (participant) => participant.total,
+  );
 }
 
 function movementTotal(p) {
@@ -773,10 +821,12 @@ function movementTotal(p) {
 }
 
 function leaderboardSnapshotRows(participants) {
-  return participants
-    .filter((p) => !isExcludedFromCompetition(p))
-    .map((p) => ({ id: p.id, name: p.name, total: movementTotal(p) }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+  return rankByScore(
+    participants
+      .filter((p) => !isExcludedFromCompetition(p))
+      .map((p) => ({ id: p.id, name: p.name, total: movementTotal(p) })),
+    (participant) => participant.total,
+  );
 }
 
 function scoreboardMovementSignature(participants) {
@@ -794,7 +844,7 @@ function createLeaderboardSnapshot(participants, sourceLabel = "Siste oppdaterin
   return {
     sourceLabel,
     takenAt: Date.now(),
-    rows: rows.map((p, i) => ({ id: p.id, rank: i + 1, total: p.total })),
+    rows: rows.map((p) => ({ id: p.id, rank: p.rank, total: p.total })),
   };
 }
 
@@ -802,10 +852,10 @@ function leaderboardMovementFromSnapshot(participants, snapshot) {
   if (!snapshot?.rows?.length) return new Map();
   const before = new Map(snapshot.rows.map((p) => [p.id, p]));
   const movement = new Map();
-  leaderboardSnapshotRows(participants).forEach((p, i) => {
+  leaderboardSnapshotRows(participants).forEach((p) => {
     const previous = before.get(p.id);
     if (!previous) return;
-    const currentRank = i + 1;
+    const currentRank = p.rank;
     const rankChange = previous.rank - currentRank;
     const pointsGained = p.total - previous.total;
     if (rankChange <= 0 && pointsGained <= 0) return;
@@ -890,23 +940,9 @@ function pickResults(picks, fasit) {
   if (picks.finale || fasit.finale) bf.push(mk("Finale · mester", picks.finale, fasit.finale, POINTS.finale));
   push("bf", "Bronse & finale", bf);
 
-  // VM-quiz: spm 4 (idx 3) har ±5-toleranse
-  const quizItems = [];
-  QUIZ_QUESTIONS.forEach((q, i) => {
-    const f = fasit.quiz?.[i];
-    if (!f) return;
-    const p = picks.quiz?.[i];
-    let correct;
-    if (i === 3) {
-      const fn = parseInt(String(f).replace(/\D/g, ""), 10);
-      const pn = parseInt(String(p).replace(/\D/g, ""), 10);
-      correct = !isNaN(fn) && !isNaN(pn) && Math.abs(fn - pn) <= 5;
-    } else {
-      correct = !!p && norm(f) === norm(p);
-    }
-    quizItems.push({ label: `${i + 1}. ${q}`, pick: p || "", actual: f, status: correct ? "hit" : "miss", points: correct ? POINTS.quiz : 0, max: POINTS.quiz, team: false });
-  });
-  push("quiz", "VM-quiz", quizItems);
+  // VM-quiz: spm. 4 har ±5-toleranse. Ventende spørsmål skal ikke telle
+  // før fasiten er fylt inn.
+  push("quiz", "VM-quiz", quizResultItems(picks, fasit).filter((item) => item.actual));
 
   // Vis lagnavn kanonisk (offisielt navn + flagg uansett skrivemåte i Excel).
   for (const sec of sections) {
@@ -955,6 +991,9 @@ export default function App() {
   const [movementSnapshot, setMovementSnapshot] = useState(null);
   const [settings, setSettings] = useState(() => normalizeSettings());
   const [adminPreviewCeremony, setAdminPreviewCeremony] = useState(() => normalizeCeremony());
+  const [viewerCeremony, setViewerCeremony] = useState(() => normalizeCeremony());
+  const [showCeremonyModal, setShowCeremonyModal] = useState(false);
+  const [showViewerCeremonyIntro, setShowViewerCeremonyIntro] = useState(true);
   const [mode, setMode] = useState(() => {
     try {
       const saved = localStorage.getItem(LAST_PUBLIC_MODE_KEY);
@@ -1146,9 +1185,9 @@ export default function App() {
     if (signature === lastSavedSnapshotRef.current) return;
     pendingSaveRef.current = { snapshot, signature };
     window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), 750);
+    if (mode !== "fasit") saveTimerRef.current = window.setTimeout(() => flushSaveRef.current?.(), 750);
     return () => window.clearTimeout(saveTimerRef.current);
-  }, [participants, fasit, settings, loaded, isAdmin]);
+  }, [participants, fasit, settings, loaded, isAdmin, mode]);
 
   useEffect(() => {
     const warnIfDirty = (event) => {
@@ -1160,7 +1199,7 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", warnIfDirty);
   }, []);
 
-  // Public viewers follow the admin-controlled ceremony without needing to reload.
+  // Public viewers pick up admin publication changes without needing to reload.
   useEffect(() => {
     if (!loaded || sessionState !== "public" || DEMO_DATA) return;
     let active = true;
@@ -1173,6 +1212,21 @@ export default function App() {
     const interval = window.setInterval(refresh, 30000);
     return () => { active = false; window.clearInterval(interval); };
   }, [loaded, sessionState, applyDataEnvelope, competitionData]);
+
+  // Once admin publishes a ceremony, each public device gets its own local
+  // walkthrough. Dismissing it is remembered only for that specific release.
+  useEffect(() => {
+    if (!loaded || isAdmin || !settings.ceremonyUnlocked) {
+      if (!settings.ceremonyUnlocked) setShowCeremonyModal(false);
+      return;
+    }
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(ceremonyDismissedKey(settings.ceremonyReleaseId)) === "1"; } catch { /* Popupen fungerer også uten localStorage. */ }
+    if (dismissed) return;
+    setViewerCeremony(normalizeCeremony());
+    setShowViewerCeremonyIntro(true);
+    setShowCeremonyModal(true);
+  }, [loaded, isAdmin, settings.ceremonyUnlocked, settings.ceremonyReleaseId]);
 
   const handleLogoClock = () => {
     clearTimeout(logoClickTimer.current);
@@ -1235,6 +1289,19 @@ export default function App() {
     flushSaveRef.current?.();
   };
 
+  const saveCurrentChanges = () => {
+    const nextParticipants = recalculateParticipantScores(participants, fasit);
+    recordScoreboardMovement(participants, nextParticipants, "Oppdatert resultat");
+    setParticipants(nextParticipants);
+    const snapshot = editableSnapshot(nextParticipants, fasit, settings);
+    const signature = snapshotSignature(snapshot);
+    if (signature === lastSavedSnapshotRef.current) return;
+    pendingSaveRef.current = { snapshot, signature };
+    saveRetryRef.current = 0;
+    window.clearTimeout(saveTimerRef.current);
+    flushSaveRef.current?.();
+  };
+
   const exportUnsavedData = () => {
     const pending = conflictSnapshotRef.current || pendingSaveRef.current;
     if (!pending?.snapshot) return;
@@ -1267,12 +1334,24 @@ export default function App() {
 
   const togglePublicCeremony = () => {
     if (settings.ceremonyUnlocked) {
-      setSettings((current) => ({ ...normalizeSettings(current), ceremonyUnlocked: false }));
+      const ceremony = normalizeCeremony();
+      setAdminPreviewCeremony(ceremony);
+      setSettings((current) => ({ ...normalizeSettings(current), ceremonyUnlocked: false, ceremony }));
       return;
     }
     const ceremony = normalizeCeremony();
     setAdminPreviewCeremony(ceremony);
-    setSettings((current) => ({ ...normalizeSettings(current), ceremonyUnlocked: true, ceremony }));
+    setSettings((current) => ({
+      ...normalizeSettings(current),
+      ceremonyUnlocked: true,
+      ceremonyReleaseId: `${Date.now()}`,
+      ceremony,
+    }));
+  };
+
+  const dismissPublicCeremony = () => {
+    try { localStorage.setItem(ceremonyDismissedKey(settings.ceremonyReleaseId), "1"); } catch { /* Lukkeknappen fungerer også uten localStorage. */ }
+    setShowCeremonyModal(false);
   };
 
   if (!loaded) {
@@ -1283,11 +1362,15 @@ export default function App() {
     );
   }
 
-  const publicTabs = [["hjem", "Hjem"], ["stilling", "Stilling"], ["fasit-view", "Resultat"], ["vei-vm", "Veien til VM"], ["present", "Kåring"]];
-  const adminTabs = [["deltakere", "Deltakere"], ["fasit", "Rediger resultat"]];
-  const tabs = isAdmin ? [...publicTabs, ...adminTabs] : publicTabs;
-  const bonusPublished = settings.ceremony.phase === "winner";
-  const activeCeremony = settings.ceremonyUnlocked ? settings.ceremony : adminPreviewCeremony;
+  const tabs = isAdmin ? [...PUBLIC_TABS, ...ADMIN_TABS] : PUBLIC_TABS;
+  const bonusPublished = settings.ceremonyUnlocked;
+  const publicSelfGuided = !isAdmin && settings.ceremonyUnlocked;
+  const activeCeremony = publicSelfGuided
+    ? viewerCeremony
+    : settings.ceremonyUnlocked ? settings.ceremony : adminPreviewCeremony;
+  const updateActiveCeremony = publicSelfGuided ? setViewerCeremony : setCeremony;
+  const hasUnsavedChanges = isAdmin && hydratedAdminRef.current
+    && snapshotSignature(editableSnapshot(participants, fasit, settings)) !== lastSavedSnapshotRef.current;
 
   return (
     <div style={S.app} data-theme={theme}>
@@ -1314,6 +1397,27 @@ export default function App() {
         </div>
       )}
 
+      {showCeremonyModal && !isAdmin && settings.ceremonyUnlocked && (
+        <div role="dialog" aria-modal="true" aria-label="VM-kåring" style={S.ceremonyModalOverlay}>
+          <div style={S.ceremonyModal}>
+            <button type="button" aria-label="Lukk kåringen" onClick={dismissPublicCeremony} style={S.ceremonyModalClose}>×</button>
+            <React.Suspense fallback={<div style={S.adminWrap}>Laster kåringen …</div>}>
+              <Ceremony
+                unlocked
+                participants={participants}
+                ceremony={viewerCeremony}
+                setCeremony={setViewerCeremony}
+                isAdmin={false}
+                isLive
+                selfGuided
+                showIntro={showViewerCeremonyIntro}
+                onStart={() => setShowViewerCeremonyIntro(false)}
+                onExit={dismissPublicCeremony} />
+            </React.Suspense>
+          </div>
+        </div>
+      )}
+
       <header style={S.header}>
         <div style={{
           ...S.headerInner,
@@ -1332,21 +1436,43 @@ export default function App() {
               }} />
             </div>
           </button>
-          <div className="no-scrollbar" style={{
+          <nav aria-label="Hovednavigasjon" className={`primary-nav${isMobile ? " primary-nav--mobile" : ""}`} style={{
             ...S.modeToggle,
             marginLeft: isCompactHeader && !isMobile ? "auto" : 0,
             ...(!isCompactHeader ? { justifySelf: "center" } : {}),
-            ...(isMobile ? { order: 3, flexBasis: "100%", maxWidth: "100%", overflowX: "auto", justifyContent: "flex-start" } : {}),
+            ...(isMobile ? S.mobileModeToggle : {}),
           }}>
-            {tabs.map(([m, label]) => (
-              <button key={m} type="button" aria-current={mode === m ? "page" : undefined} onClick={() => setMode(m)}
-                disabled={m === "present" && (isAdmin || settings.ceremonyUnlocked) && participants.filter((p) => !isExcludedFromCompetition(p)).length < 2}
-                style={{ ...S.modeBtn, ...(mode === m ? S.modeBtnActive : {}) }}>
-                {m === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.tabLock}><LockIcon size={12} /></span>}
-                {label}
+            {(isMobile ? PUBLIC_TABS : tabs).map(({ mode: tabMode, label, mobileLabel }) => (
+              <button key={tabMode} type="button" aria-label={label} aria-current={mode === tabMode ? "page" : undefined} onClick={() => setMode(tabMode)}
+                disabled={tabMode === "present" && (isAdmin || settings.ceremonyUnlocked) && participants.filter((p) => !isExcludedFromCompetition(p)).length < 2}
+                style={{ ...S.modeBtn, ...(isMobile ? S.mobileModeBtn : {}), ...(mode === tabMode ? S.modeBtnActive : {}) }}>
+                {isMobile ? (
+                  <>
+                    <NavigationIcon mode={tabMode} />
+                    <span className="mobile-nav-label">{mobileLabel}</span>
+                    {tabMode === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.mobileTabLock}><LockIcon size={8} /></span>}
+                  </>
+                ) : (
+                  <>
+                    <NavigationIcon mode={tabMode} size={16} />
+                    {tabMode === "present" && !settings.ceremonyUnlocked && <span aria-hidden="true" style={S.tabLock}><LockIcon size={12} /></span>}
+                    {label}
+                  </>
+                )}
               </button>
             ))}
-          </div>
+          </nav>
+          {isMobile && isAdmin && (
+            <nav aria-label="Adminnavigasjon" className="mobile-admin-nav" style={S.mobileAdminNav}>
+              {ADMIN_TABS.map(({ mode: tabMode, label }) => (
+                <button key={tabMode} type="button" aria-current={mode === tabMode ? "page" : undefined}
+                  onClick={() => setMode(tabMode)} style={{ ...S.mobileAdminBtn, ...(mode === tabMode ? S.modeBtnActive : {}) }}>
+                  <NavigationIcon mode={tabMode} size={15} />
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8, ...(!isCompactHeader ? { justifySelf: "end", minWidth: 0 } : {}) }}>
             {isAdmin && mode === "present" && (
               <button
@@ -1354,7 +1480,7 @@ export default function App() {
                 aria-pressed={settings.ceremonyUnlocked}
                 onClick={togglePublicCeremony}
                 style={{ ...S.ceremonyToggle, ...(settings.ceremonyUnlocked ? S.ceremonyToggleOpen : {}) }}>
-                {settings.ceremonyUnlocked ? "Lås offentlig kåring" : "Start offentlig kåring"}
+                {settings.ceremonyUnlocked ? "Trekk tilbake kåring" : "Gjør kåring tilgjengelig"}
               </button>
             )}
             <button type="button" aria-pressed={theme === "light"} onClick={() => {
@@ -1405,16 +1531,27 @@ export default function App() {
           recordScoreboardMovement={recordScoreboardMovement}
         />
       )}
-      {mode === "fasit" && <Fasit fasit={fasit} setFasit={setFasit} applyLiveResults={applyLiveResults} />}
+      {mode === "fasit" && (
+        <Fasit
+          fasit={fasit}
+          setFasit={setFasit}
+          applyLiveResults={applyLiveResults}
+          hasUnsavedChanges={hasUnsavedChanges}
+          saveStatus={saveStatus}
+          onSave={saveCurrentChanges}
+        />
+      )}
       {mode === "present" && (
         <React.Suspense fallback={<div style={S.adminWrap}>Laster kåringen …</div>}>
           <Ceremony
             unlocked={isAdmin || settings.ceremonyUnlocked}
             participants={participants}
             ceremony={activeCeremony}
-            setCeremony={setCeremony}
+            setCeremony={updateActiveCeremony}
             isAdmin={isAdmin}
             isLive={settings.ceremonyUnlocked}
+            selfGuided={publicSelfGuided}
+            standalone
             onExit={() => setMode("stilling")} />
         </React.Suspense>
       )}
@@ -1702,18 +1839,9 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
                               })()}
 
                               {/* Quiz */}
-                              {p.picks.quiz?.some(Boolean) && (
+                              {(p.picks.quiz?.some(Boolean) || fasit.quiz?.some(Boolean)) && (
                                 <div style={{ padding: "14px 16px" }}>
-                                  <div style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>Quiz</div>
-                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 3 }}>
-                                    {QUIZ_QUESTIONS.map((q, i) => p.picks.quiz[i] ? (
-                                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", background: "var(--bg4)", borderRadius: 7 }}>
-                                        <span style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, flexShrink: 0, minWidth: 14 }}>{i+1}</span>
-                                        <span style={{ color: "var(--text3)", flex: 1, fontSize: 12 }}>{q}</span>
-                                        <span style={{ color: "var(--accent)", fontWeight: 700, whiteSpace: "nowrap", fontSize: 12 }}>{p.picks.quiz[i]}</span>
-                                      </div>
-                                    ) : null)}
-                                  </div>
+                                  <QuizParticipantResults picks={p.picks} fasit={fasit} showHeader />
                                 </div>
                               )}
 
@@ -1734,9 +1862,9 @@ function Deltakere({ participants, setParticipants, fasit, saveStatus, saveActio
         <div style={S.previewBox}>
           <div style={S.previewTitle}>Foreløpig stilling (uten bonus)</div>
           <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {ranked.map((p, i) => (
+            {ranked.map((p) => (
               <li key={p.id} style={S.previewItem}>
-                <span style={S.previewRank}>{i + 1}</span>
+                <span style={S.previewRank}>{p.rank}</span>
                 <span style={{ ...S.dot, background: p.color }} />
                 <span style={{ flex: 1 }}>{firstName(p.name)}</span>
                 <span style={{ fontWeight: 800, color: "var(--accent)" }}>{p.total} p</span>
@@ -1781,6 +1909,61 @@ function PredictionBracket({ picks, fasit }) {
         ? <VerticalBracket getMatch={getMatch} getBronse={getBronse} getFinale={getFinale} getFasitWinner={getFasitWinner} getFasitFinale={getFasitFinale} getFasitBronse={getFasitBronse} getPointResult={getPointResult} />
         : renderBracketHorizontal({ getMatch, getBronse, getFinale, compactNames: true, getFasitWinner, getFasitFinale, getFasitBronse, getPointResult })}
     </section>
+  );
+}
+
+function QuizParticipantResults({ picks, fasit, items: providedItems, showHeader = false }) {
+  const items = providedItems || quizResultItems(picks, fasit);
+  if (!items.length) return null;
+
+  const decided = items.filter((item) => item.status !== "pending");
+  const hits = decided.filter((item) => item.status === "hit").length;
+  const points = decided.reduce((sum, item) => sum + item.points, 0);
+
+  return (
+    <div>
+      {showHeader && (
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
+          <span style={{ color: "var(--text3)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.2 }}>VM-quiz</span>
+          <span style={{ color: "var(--text3)", fontSize: 11.5, whiteSpace: "nowrap" }}>
+            {decided.length ? <><b style={{ color: "var(--text1)" }}>{hits}/{decided.length}</b> rett · <b style={{ color: "var(--accent)" }}>{points} p</b></> : "Venter på fasit"}
+          </span>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 6 }}>
+        {items.map((item) => (
+          <div key={item.index} style={{ padding: "8px 10px", background: "var(--bg4)", borderRadius: 8, borderLeft: `3px solid ${STATUS_COLOR[item.status]}` }}>
+            <div style={{ color: "var(--text3)", fontSize: 11.5, lineHeight: 1.35, marginBottom: 6 }}>{item.label}</div>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "5px 10px", fontSize: 11.5 }}>
+              <span style={{ color: "var(--text4)" }}>Tips: <b style={{ color: "var(--text1)" }}>{item.pick || "—"}</b></span>
+              <span style={{ color: "var(--text4)" }}>Fasit: <b style={{ color: "var(--text2)" }}>{item.actual || "Venter"}</b></span>
+              <span style={{ marginLeft: "auto", color: STATUS_COLOR[item.status], fontWeight: 800, whiteSpace: "nowrap" }}>
+                {item.status === "hit" ? `Rett · +${item.points} p` : item.status === "miss" ? "Bom" : "Ikke avgjort"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuizAnswerKey({ fasit }) {
+  const items = quizResultItems(null, fasit).filter((item) => item.actual);
+  if (!items.length) return null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 7 }}>
+      {items.map((item) => (
+        <div key={item.index} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 9 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, flexShrink: 0, borderRadius: 7, background: "color-mix(in srgb, var(--accent) 12%, var(--bg4))", color: "var(--accent)", fontSize: 11, fontWeight: 900 }}>
+            {item.index + 1}
+          </span>
+          <span style={{ flex: 1, minWidth: 0, color: "var(--text3)", fontSize: 12.5, lineHeight: 1.4 }}>{QUIZ_QUESTIONS[item.index]}</span>
+          <span style={{ color: "var(--accent)", fontSize: 13, fontWeight: 800, textAlign: "right", flexShrink: 0 }}>{item.actual}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1853,19 +2036,7 @@ function StillingBreakdown({ picks, fasit, showBonus }) {
             </span>
           </div>
           {sec.key === "quiz" ? (
-            <div>
-              {sec.items.map((it, j) => (
-                <div key={j} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 0",
-                  borderBottom: j < sec.items.length - 1 ? "1px solid var(--bg2)" : "none" }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--text3)", lineHeight: 1.4 }}>{it.label}</span>
-                  <span style={{ fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap", flexShrink: 0,
-                    color: it.status === "hit" ? "var(--accent)" : "var(--text2)" }}>{it.pick || "—"}</span>
-                  {it.status === "hit"
-                    ? <span style={{ color: "var(--accent)", fontWeight: 800, fontSize: 11.5, flexShrink: 0 }}>+{it.points}</span>
-                    : <span style={{ color: "var(--text4)", fontSize: 11, flexShrink: 0, whiteSpace: "nowrap" }}>→ {it.actual}</span>}
-                </div>
-              ))}
-            </div>
+            <QuizParticipantResults picks={picks} fasit={fasit} items={sec.items} />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: 6 }}>
               {sec.items.map((it, j) => <Chip key={j} it={it} />)}
@@ -2031,8 +2202,10 @@ function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
   const [openId, setOpenId] = useState(null);
   const roundColumnWidth = "clamp(46px, 5.8vw, 68px)";
   const toTotal = (p) => ({ ...p, total: cumulative(p, ROUNDS.length - 1) + (showBonus ? p.bonus || 0 : 0) });
-  const ranked = participants.filter((p) => !isExcludedFromCompetition(p)).map(toTotal)
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+  const ranked = rankByScore(
+    participants.filter((p) => !isExcludedFromCompetition(p)).map(toTotal),
+    (participant) => participant.total,
+  );
   const excluded = participants.filter(isExcludedFromCompetition).map(toTotal)
     .sort((a, b) => a.name.localeCompare(b.name, "nb-NO"));
   const movementById = leaderboardMovementFromSnapshot(participants, movementSnapshot);
@@ -2078,7 +2251,7 @@ function Stilling({ participants, fasit, showBonus, movementSnapshot }) {
           </span>
         </div>}
         {ranked.map((p, i) => (
-          <LeaderboardEntry key={p.id} participant={p} rank={i + 1} movement={movementById.get(p.id)} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
+          <LeaderboardEntry key={p.id} participant={p} rank={p.rank} movement={movementById.get(p.id)} isMobile={isMobile} roundColumnWidth={roundColumnWidth}
             open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} fasit={fasit} showBonus={showBonus}
             divider={i < ranked.length - 1} />
         ))}
@@ -2164,12 +2337,13 @@ function computeHomeStats(participants, showBonus) {
         label: DEPTH_LABEL[deepestDepth],
       }
     : null;
-  const leaderboard = participants
-    .map((p) => ({
+  const leaderboard = rankByScore(
+    participants.map((p) => ({
       name: firstName(p.name),
       total: ROUNDS.reduce((sum, r) => sum + (p.scores[r.key] || 0), 0) + (showBonus ? p.bonus || 0 : 0),
-    }))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "nb-NO"));
+    })),
+    (participant) => participant.total,
+  );
   return { total, championRanking, finalistRanking, leaderboard, norway: { advance, champions, deepest: deepestShown } };
 }
 
@@ -2466,7 +2640,15 @@ function Hjem({ participants, showBonus, theme }) {
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span style={HJ.chip}>{N} {N === 1 ? "deltaker" : "deltakere"}</span>
-            {leader && N > 0 && <span style={HJ.chip}>Leder: {leader.name}</span>}
+            {leader && N > 0 && (
+              <span style={HJ.chip}>
+                {tiedLeaders.length > 3
+                  ? `${tiedLeaders.length} delte ledere`
+                  : tiedLeaders.length > 1
+                    ? `Ledere: ${norwegianNameList(tiedLeaders.map((participant) => participant.name))}`
+                    : `Leder: ${leader.name}`}
+              </span>
+            )}
           </div>
         </div>
         <RowingSupporter />
@@ -2675,19 +2857,11 @@ function FasitView({ fasit, showBonus, theme }) {
 
       {showBonus && fasit.quiz.some(Boolean) && (
         <div style={secStyle}>
-          <div style={S.fasitSectionTitle}>VM-quiz resultat</div>
-          {QUIZ_QUESTIONS.map((q, i) =>
-            fasit.quiz[i] ? (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 9 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 12.5 : 13, fontWeight: 700, color: "var(--text3)", lineHeight: 1.4 }}>
-                  {i + 1}. {q}
-                </span>
-                <span style={{ fontWeight: 700, color: "var(--accent)", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0, fontSize: isMobile ? 12.5 : 14 }}>
-                  {fasit.quiz[i]}
-                </span>
-              </div>
-            ) : null
-          )}
+          <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <PatternSectionLabel theme={theme}>VM-quiz fasit</PatternSectionLabel>
+            <span style={{ color: "var(--text3)", fontSize: 12.5, fontWeight: 600 }}>1 poeng per rett svar · spørsmål 4 godtar ±5 mål.</span>
+          </div>
+          <QuizAnswerKey fasit={fasit} />
         </div>
       )}
       {!showBonus && (
@@ -2703,7 +2877,7 @@ function FasitView({ fasit, showBonus, theme }) {
 // ─────────────────────────────────────────────
 // FASIT — faktiske resultater
 // ─────────────────────────────────────────────
-function Fasit({ fasit, setFasit, applyLiveResults }) {
+function Fasit({ fasit, setFasit, applyLiveResults, hasUnsavedChanges, saveStatus, onSave }) {
   const isMobile = useIsMobile();
   const secStyle = isMobile ? { ...S.fasitSection, padding: 13 } : S.fasitSection;
   const [aiState, setAiState] = useState(""); // "" | "loading" | "ok" | "error"
@@ -2759,7 +2933,7 @@ function Fasit({ fasit, setFasit, applyLiveResults }) {
         <div style={S.importDesc}>
           Henter live gruppe-standings, beste treere og kampresultater direkte fra <b>worldcup26.ir</b> (gratis, ingen nøkkel).
           Viser <b>midlertidig stilling</b> selv om gruppen ikke er ferdigspilt.
-          Serveren sjekker i bakgrunnen og lagrer først når en ny ferdigspilt kamp dukker opp. Quiz-resultat fylles inn manuelt.
+          Serveren sjekker i bakgrunnen og lagrer først når en ny ferdigspilt kamp dukker opp. Forhåndsutfylt quizfasit kan justeres under.
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={runAI} disabled={aiState === "loading"} style={S.calcBtn}>
@@ -2882,8 +3056,21 @@ function Fasit({ fasit, setFasit, applyLiveResults }) {
         ))}
       </div>
 
+      {hasUnsavedChanges && (
+        <div style={S.fasitSaveBar}>
+          <span role="status">{saveStatus.state === "error" ? saveStatus.message : "Du har ulagrede endringer."}</span>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={["saving", "conflict"].includes(saveStatus.state)}
+            style={S.fasitSaveBtn}>
+            {saveStatus.state === "saving" ? "Lagrer …" : "Lagre endringer"}
+          </button>
+        </div>
+      )}
+
       <div style={{ ...S.importDesc, textAlign: "center", padding: "8px 0 24px" }}>
-        Live-oppdateringer beregner poeng automatisk. Etter manuelle endringer kan du fortsatt gå til <b>Deltakere</b> og trykke «Beregn poeng fra resultat».
+        Poengene beregnes automatisk når du lagrer resultatendringer.
       </div>
     </div>
   );
@@ -2915,18 +3102,67 @@ const S = {
   title: { fontSize: 24, fontWeight: 900, letterSpacing: -0.5, color: "var(--text1)" },
   subtitle: { fontSize: 11, color: "var(--text3)", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600 },
   modeToggle: { display: "flex", gap: 3, background: "var(--bg3)", padding: 5, borderRadius: 50 },
+  mobileModeToggle: {
+    order: 3, flexBasis: "100%", width: "100%", maxWidth: "100%", minWidth: 0,
+    display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 2,
+    overflow: "hidden", padding: 4, borderRadius: 16,
+  },
   modeBtn: {
     border: "none", background: "transparent", color: "var(--text3)",
     padding: "8px 13px", borderRadius: 50, cursor: "pointer", fontSize: 14, fontWeight: 700,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
     transition: "all .2s", whiteSpace: "nowrap", flexShrink: 0,
+  },
+  mobileModeBtn: {
+    position: "relative", minWidth: 0, minHeight: 50, padding: "6px 2px 5px", borderRadius: 12,
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+    overflow: "hidden", fontSize: 10, lineHeight: 1.05, whiteSpace: "normal",
   },
   modeBtnActive: { background: "var(--btn-active-bg)", color: "var(--btn-active-color)" },
   tabLock: { display: "inline-flex", verticalAlign: "-2px", marginRight: 5, opacity: 0.8 },
+  mobileTabLock: {
+    position: "absolute", top: 4, right: "calc(50% - 18px)", display: "inline-flex",
+    padding: 2, borderRadius: "50%", background: "var(--bg3)", color: "var(--text3)",
+  },
+  mobileAdminNav: {
+    order: 2, flexBasis: "100%", width: "100%", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 4, padding: 4, borderRadius: 12, background: "var(--bg4)",
+  },
+  mobileAdminBtn: {
+    minWidth: 0, border: 0, borderRadius: 9, padding: "8px 6px", background: "transparent",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+    color: "var(--text3)", fontSize: 11, fontWeight: 750, cursor: "pointer",
+  },
   ceremonyToggle: {
     background: "transparent", color: "#D8B15A", border: "1px solid #D8B15A66", padding: "6px 10px",
     borderRadius: 20, fontSize: 12, fontWeight: 750, cursor: "pointer", whiteSpace: "nowrap",
   },
   ceremonyToggleOpen: { color: "var(--accent)", borderColor: "var(--accent)66" },
+  fasitSaveBar: {
+    position: "sticky", bottom: 12, zIndex: 12, margin: "18px auto", width: "min(100%, 620px)",
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+    padding: "12px 14px 12px 18px", borderRadius: 14, background: "var(--bg3)",
+    border: "1px solid var(--accent)", boxShadow: "0 14px 36px rgba(0,0,0,.28)",
+    color: "var(--text1)", fontSize: 13, fontWeight: 700,
+  },
+  fasitSaveBtn: {
+    border: 0, borderRadius: 50, padding: "11px 17px", background: "var(--accent)",
+    color: "var(--accent-fg)", fontSize: 13, fontWeight: 850, cursor: "pointer", whiteSpace: "nowrap",
+  },
+  ceremonyModalOverlay: {
+    position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "clamp(8px, 2vw, 24px)", background: "rgba(0, 0, 0, 0.82)", backdropFilter: "blur(8px)", boxSizing: "border-box",
+  },
+  ceremonyModal: {
+    position: "relative", width: "min(1180px, 100%)", height: "min(820px, calc(100dvh - 16px))",
+    display: "flex", overflow: "auto", background: "var(--bg0)", border: "1px solid var(--border)", borderRadius: 20,
+    boxShadow: "0 28px 90px rgba(0, 0, 0, 0.65)",
+  },
+  ceremonyModalClose: {
+    position: "absolute", top: 10, right: 10, zIndex: 3, display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--bg4)", color: "var(--text1)",
+    fontSize: 25, lineHeight: 1, cursor: "pointer", boxShadow: "0 8px 24px rgba(0, 0, 0, 0.28)",
+  },
 
   adminWrap: { padding: 16, maxWidth: 1280, margin: "0 auto", width: "100%", boxSizing: "border-box" },
 
