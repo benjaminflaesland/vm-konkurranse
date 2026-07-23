@@ -10,7 +10,7 @@ import {
   recalculateParticipantScores,
 } from "./lib/competition.js";
 import { backupCompetitionData } from "./lib/competition-backups.js";
-import { migrateCompetitionData } from "./lib/competition-data.js";
+import { migrateCompetitionData, SCHEMA_VERSION } from "./lib/competition-data.js";
 
 const BLOB_KEY = "competition-data";
 const STORE_NAME = "vm2026";
@@ -113,7 +113,7 @@ async function updateFromFinishedMatches(store, startedAt) {
       finishedGamesSignature: finishedSignature,
       worldCupComplete: complete,
     },
-    schemaVersion: 3,
+    schemaVersion: SCHEMA_VERSION,
     revision,
     updatedAt: startedAt,
   });

@@ -34,7 +34,7 @@ describe("client data hooks", () => {
       status: 409,
       revision: "remote",
     });
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ baseRevision: "local", data: { schemaVersion: 3 } });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ baseRevision: "local", data: { schemaVersion: 5 } });
   });
 
   it("bruker kun serverstyrt adminsesjon", async () => {
