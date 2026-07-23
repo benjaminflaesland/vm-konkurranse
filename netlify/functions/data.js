@@ -3,6 +3,7 @@ import { connectLambda, getStore } from "@netlify/blobs";
 import { readAdminSession } from "./lib/auth-session.js";
 import { backupCompetitionData } from "./lib/competition-backups.js";
 import {
+  SCHEMA_VERSION,
   editableCompetitionData,
   migrateCompetitionData,
   serializePublicCompetition,
@@ -86,7 +87,7 @@ export const handler = async (event) => {
     const next = {
       ...(current || {}),
       ...editableCompetitionData(requestedData),
-      schemaVersion: 3,
+      schemaVersion: SCHEMA_VERSION,
       revision,
       updatedAt,
     };
